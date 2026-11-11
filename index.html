@@ -4,11 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#16624f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>報修登記</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <link rel="stylesheet" href="./style.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js"></script>
   <script defer src="./config.js"></script>
   <script defer src="./app.js"></script>
+  <script defer src="./pwa.js"></script>
 </head>
 <body>
   <header class="page-header">
@@ -19,6 +25,12 @@
     </div>
   </header>
   <main class="container">
+    <section class="panel install-panel" aria-label="安裝與連線狀態">
+      <div class="section-heading"><p>將報修登記加入主畫面，方便下次開啟。</p><button type="button" id="install-button" hidden>安裝報修登記</button></div>
+      <details id="install-help"><summary>如何加入主畫面</summary><p class="hint">Android 可使用 Chrome 選單的「安裝應用程式」或「加到主畫面」；iPhone／iPad 請在 Safari 按分享，再選「加入主畫面」。選項依瀏覽器而異，請透過 HTTPS 網址開啟。</p></details>
+      <p id="pwa-message" class="hint" role="status" aria-live="polite">離線功能尚未準備完成，請保持網路連線。</p>
+      <p id="network-message" class="message error" role="status" aria-live="polite" hidden></p>
+    </section>
     <section class="panel" aria-labelledby="form-title">
       <h2 id="form-title">新增報修</h2>
       <p class="hint">以下欄位皆為必填。此為公開示範，請使用虛構姓名與地點，勿填個人資料。</p>

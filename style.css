@@ -10,6 +10,10 @@ p { margin: 0; }
 main { padding-top: 24px; }
 .panel { padding: 28px; margin-bottom: 24px; background: white; border: 1px solid #dbe5df; border-radius: 18px; box-shadow: 0 4px 20px #20383005; }
 .hint { color: #52675f; font-size: .9rem; }
+.install-panel { padding-block: 18px; }
+.install-panel details { margin-block: 10px; }
+.install-panel summary { color: #16624f; cursor: pointer; min-height: 44px; display: flex; align-items: center; text-decoration: underline; }
+.install-panel details p { margin-bottom: 10px; }
 fieldset { border: 0; padding: 0; margin: 24px 0 0; min-width: 0; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 label { display: flex; flex-direction: column; gap: 8px; font-weight: 600; }
