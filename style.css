@@ -35,7 +35,13 @@ button:disabled { opacity: .6; cursor: wait; }
 .request-card:last-child { padding-bottom: 0; }
 .card-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
 .badge { border-radius: 6px; padding: 3px 9px; font-size: .8rem; background: #edf3ef; color: #365346; }
-.urgency-high { background: #fff0e9; color: #9c3e13; }
+.urgency-high { background: #fee2e2; color: #b91c1c; }
+.urgency-filters { display: flex; gap: 8px; margin-top: 20px; }
+.filter-button { flex: 1; min-width: 0; padding: 10px 12px; background: white; color: #16624f; border-color: #99afa4; }
+.filter-button:hover:not(:disabled) { background: #edf5f0; }
+.filter-button[aria-pressed="true"] { background: #16624f; color: white; border-color: #16624f; box-shadow: inset 0 0 0 2px white; }
+.filter-button[aria-pressed="true"]:hover { background: #104b3c; }
+.filter-summary { margin-top: 12px; }
 .status { margin-left: auto; color: #16624f; font-weight: 600; }
 .request-description { margin: 10px 0; white-space: pre-wrap; }
 .request-meta { font-size: .85rem; color: #52675f; }

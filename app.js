@@ -8,6 +8,11 @@
   const formMessage = document.querySelector('#form-message');
   const listMessage = document.querySelector('#list-message');
   const list = document.querySelector('#request-list');
+  const filterButtons = document.querySelectorAll('.filter-button');
+  const filterSummary = document.querySelector('#filter-summary');
+  let cachedRequests = [];
+  let selectedUrgency = '全部';
+  let hasLoaded = false;
   let client;
   let saving = false;
   let loading = false;
@@ -46,6 +51,31 @@
     list.replaceChildren(fragment);
   }
 
+  // 篩選只處理已讀取的最近 20 筆，不發出額外資料庫請求，也不改變排序。
+  function applyUrgencyFilter() {
+    for (const button of filterButtons) {
+      button.setAttribute('aria-pressed', String(button.dataset.urgency === selectedUrgency));
+    }
+    if (!hasLoaded) return;
+    const visible = selectedUrgency === '全部'
+      ? cachedRequests
+      : cachedRequests.filter((request) => request.urgency === selectedUrgency);
+    renderRequests(visible);
+    filterSummary.hidden = false;
+    filterSummary.textContent = visible.length
+      ? `目前顯示 ${visible.length} 筆（${selectedUrgency}）；篩選範圍為已載入的最近 20 筆。`
+      : selectedUrgency === '全部'
+        ? '目前還沒有報修紀錄。'
+        : `已載入的清單中沒有緊急程度為「${selectedUrgency}」的報修。`;
+  }
+
+  for (const button of filterButtons) {
+    button.addEventListener('click', () => {
+      selectedUrgency = button.dataset.urgency;
+      applyUrgencyFilter();
+    });
+  }
+
   // 只讀取畫面需要的欄位；由資料庫排序並限制最近 20 筆。
   async function loadRequests() {
     if (loading) return;
@@ -60,10 +90,12 @@
         .order('id', { ascending: false })
         .limit(20);
       if (error) throw error;
-      renderRequests(data || []);
-      showMessage(listMessage, data?.length ? '' : '目前還沒有報修紀錄。');
+      cachedRequests = data || [];
+      hasLoaded = true;
+      applyUrgencyFilter();
+      showMessage(listMessage, '');
     } catch {
-      const retained = list.children.length ? '以下保留上次載入的資料。' : '';
+      const retained = hasLoaded ? '保留上次載入的資料，仍可切換篩選。' : '';
       showMessage(listMessage, `無法載入清單，請稍後按「重新整理」再試。${retained}`, 'error');
     } finally {
       loading = false;
