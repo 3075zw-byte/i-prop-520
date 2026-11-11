@@ -10,6 +10,7 @@
   const list = document.querySelector('#request-list');
   const filterButtons = document.querySelectorAll('.filter-button');
   const filterSummary = document.querySelector('#filter-summary');
+  const networkMessage = document.querySelector('#network-message');
   let cachedRequests = [];
   let selectedUrgency = '全部';
   let hasLoaded = false;
@@ -79,6 +80,10 @@
   // 只讀取畫面需要的欄位；由資料庫排序並限制最近 20 筆。
   async function loadRequests() {
     if (loading) return;
+    if (!navigator.onLine) {
+      showMessage(listMessage, '目前離線，無法讀取最新清單。' + (hasLoaded ? '以下為本頁上次讀取的資料。' : ''), 'error');
+      return;
+    }
     loading = true;
     refreshButton.disabled = true;
     list.setAttribute('aria-busy', 'true');
@@ -99,7 +104,7 @@
       showMessage(listMessage, `無法載入清單，請稍後按「重新整理」再試。${retained}`, 'error');
     } finally {
       loading = false;
-      refreshButton.disabled = false;
+      refreshButton.disabled = !navigator.onLine;
       list.setAttribute('aria-busy', 'false');
     }
   }
@@ -121,6 +126,22 @@
     return;
   }
 
+  // 離線時不送出、不排入佇列，避免將未傳送的報修誤報為成功。
+  function updateNetworkState() {
+    submitButton.disabled = saving || !navigator.onLine;
+    refreshButton.disabled = loading || !navigator.onLine;
+    showMessage(networkMessage, navigator.onLine ? '' : '目前離線，無法送出報修或取得最新清單。可先填寫，恢復連線後再自行送出；輸入內容只保留在本頁，重新載入或關閉後會消失。', 'error');
+    if (!navigator.onLine && !loading) {
+      showMessage(listMessage, '目前離線，無法讀取最新清單。' + (hasLoaded ? '以下為本頁上次讀取的資料。' : ''), 'error');
+    }
+  }
+  window.addEventListener('offline', updateNetworkState);
+  window.addEventListener('online', () => {
+    updateNetworkState();
+    pendingLoad = loadRequests();
+  });
+  updateNetworkState();
+
   // 拒絕只有空白的必填欄位；使用者編輯後清除上次的驗證訊息。
   for (const name of ['reporter_name', 'location', 'description']) {
     form.elements[name].addEventListener('input', (event) => event.target.setCustomValidity(''));
@@ -129,6 +150,11 @@
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (saving) return;
+    if (!navigator.onLine) {
+      updateNetworkState();
+      showMessage(formMessage, '目前離線，尚未送出報修。請恢復連線後再按送出。', 'error');
+      return;
+    }
     for (const name of ['reporter_name', 'location', 'description']) {
       const input = form.elements[name];
       input.setCustomValidity(input.value.trim() ? '' : '請填寫內容，不能只有空白。');
@@ -163,6 +189,7 @@
       saving = false;
       fields.disabled = false;
       submitButton.textContent = '送出報修';
+      updateNetworkState();
     }
   });
 
