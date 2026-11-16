@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="./style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js"></script>
   <script defer src="./config.js"></script>
+  <script defer src="./stats.js"></script>
   <script defer src="./app.js"></script>
   <script defer src="./pwa.js"></script>
 </head>
@@ -83,6 +84,26 @@
         </fieldset>
       </form>
       <p id="signoff-message" class="message" role="status" aria-live="polite" hidden></p>
+    </section>
+    <section class="panel stats-panel" aria-labelledby="stats-title">
+      <div class="section-heading">
+        <div><h2 id="stats-title">每月請假統計表</h2><p class="hint">依員工彙總所選月份的請假申請；有新申請或簽核時自動更新。</p></div>
+        <span id="live-indicator" class="live-indicator" role="status" aria-live="polite"><span class="live-dot" aria-hidden="true"></span><span id="live-text">連線中…</span></span>
+      </div>
+      <div class="stats-toolbar">
+        <label class="month-picker">統計月份<select id="stats-month" aria-label="統計月份" disabled></select></label>
+        <button type="button" id="stats-download" disabled>下載 Excel</button>
+      </div>
+      <p id="stats-message" class="message" role="status" aria-live="polite">正在載入統計…</p>
+      <div class="sheet-wrap" tabindex="0" role="region" aria-labelledby="stats-title">
+        <table class="sheet" id="stats-table">
+          <caption id="stats-caption" class="visually-hidden">每月請假統計</caption>
+          <thead><tr id="stats-head"></tr></thead>
+          <tbody id="stats-body"></tbody>
+          <tfoot id="stats-foot"></tfoot>
+        </table>
+      </div>
+      <p class="hint stats-note">請假時數只計算每日 09:00–18:00 之間的部分，跨日、跨月申請依日期分別計入。假別複選時，各假別都計 1 筆。<span id="stats-updated"></span></p>
     </section>
   </main>
   <footer class="container"><span class="footer-pill">員工請假申請示範系統・清單內容公開可見</span></footer>
