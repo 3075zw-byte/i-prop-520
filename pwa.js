@@ -41,7 +41,7 @@
       const registration = await navigator.serviceWorker.register('./sw.js');
       const updateMessage = () => {
         message.textContent = registration.waiting
-          ? '新版已備妥。請先完成操作，關閉此網站的所有分頁與視窗，再重新開啟更新。'
+          ? '新版已備妥，重新整理頁面即可使用新版。'
           : '離線介面已準備完成。送出申請與讀取最新清單仍需要網路。';
       };
       navigator.serviceWorker.ready.then(updateMessage);
