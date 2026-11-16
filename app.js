@@ -1,22 +1,21 @@
 'use strict';
 
 (() => {
-  const form = document.querySelector('#repair-form');
+  const form = document.querySelector('#overtime-form');
   const fields = document.querySelector('#form-fields');
   const submitButton = document.querySelector('#submit-button');
   const refreshButton = document.querySelector('#refresh-button');
   const formMessage = document.querySelector('#form-message');
   const listMessage = document.querySelector('#list-message');
   const list = document.querySelector('#request-list');
-  const filterButtons = document.querySelectorAll('.filter-button');
-  const filterSummary = document.querySelector('#filter-summary');
   const networkMessage = document.querySelector('#network-message');
-  let cachedRequests = [];
-  let selectedUrgency = '全部';
+  const durationHint = document.querySelector('#duration-hint');
+  const TEXT_FIELDS = ['employee_name', 'reason'];
   let hasLoaded = false;
   let client;
   let saving = false;
   let loading = false;
+  let pendingLoad = Promise.resolve();
 
   function showMessage(element, text, kind = '') {
     element.textContent = text;
@@ -24,7 +23,7 @@
     element.hidden = !text;
   }
 
-  // 以純文字建立清單，避免將報修內容解讀為 HTML。
+  // 以純文字建立清單，避免將申請內容解讀為 HTML。
   function appendText(parent, tag, text, className = '') {
     const element = document.createElement(tag);
     element.className = className;
@@ -33,48 +32,51 @@
     return element;
   }
 
+  // "HH:MM" 或 "HH:MM:SS" 轉為當日分鐘數；格式不符回傳 NaN。
+  function toMinutes(value) {
+    const match = /^(\d{2}):(\d{2})/.exec(value || '');
+    return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+  }
+
+  function formatDuration(minutes) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} 小時 ${rest} 分` : `${hours} 小時`;
+  }
+
+  function updateDurationHint() {
+    const start = toMinutes(form.elements.start_time.value);
+    const end = toMinutes(form.elements.end_time.value);
+    if (Number.isNaN(start) || Number.isNaN(end)) {
+      durationHint.textContent = '';
+    } else if (end <= start) {
+      durationHint.textContent = '結束時間須晚於開始時間。';
+    } else {
+      durationHint.textContent = `預計加班 ${formatDuration(end - start)}。`;
+    }
+  }
+
   function renderRequests(requests) {
     const fragment = document.createDocumentFragment();
     for (const request of requests) {
       const card = document.createElement('li');
       card.className = 'request-card';
       const top = appendText(card, 'div', '', 'card-top');
-      appendText(top, 'span', request.category, 'badge');
-      appendText(top, 'span', `${request.urgency}緊急程度`, `badge ${request.urgency === '高' ? 'urgency-high' : ''}`);
+      const start = (request.start_time || '').slice(0, 5);
+      const end = (request.end_time || '').slice(0, 5);
+      appendText(top, 'span', request.overtime_date, 'badge');
+      appendText(top, 'span', `${start}–${end}`, 'badge');
+      const minutes = toMinutes(end) - toMinutes(start);
+      if (minutes > 0) appendText(top, 'span', formatDuration(minutes), 'badge');
       appendText(top, 'span', request.status, 'badge status');
-      appendText(card, 'strong', request.location);
-      appendText(card, 'p', request.description, 'request-description');
+      appendText(card, 'strong', request.employee_name);
+      appendText(card, 'p', request.reason, 'request-description');
       const date = new Date(request.created_at);
       const time = Number.isNaN(date.getTime()) ? '時間不明' : date.toLocaleString('zh-TW', { hour12: false });
-      appendText(card, 'p', `${request.reporter_name} · ${time}`, 'request-meta');
+      appendText(card, 'p', `申請時間：${time}`, 'request-meta');
       fragment.append(card);
     }
     list.replaceChildren(fragment);
-  }
-
-  // 篩選只處理已讀取的最近 20 筆，不發出額外資料庫請求，也不改變排序。
-  function applyUrgencyFilter() {
-    for (const button of filterButtons) {
-      button.setAttribute('aria-pressed', String(button.dataset.urgency === selectedUrgency));
-    }
-    if (!hasLoaded) return;
-    const visible = selectedUrgency === '全部'
-      ? cachedRequests
-      : cachedRequests.filter((request) => request.urgency === selectedUrgency);
-    renderRequests(visible);
-    filterSummary.hidden = false;
-    filterSummary.textContent = visible.length
-      ? `目前顯示 ${visible.length} 筆（${selectedUrgency}）；篩選範圍為已載入的最近 20 筆。`
-      : selectedUrgency === '全部'
-        ? '目前還沒有報修紀錄。'
-        : `已載入的清單中沒有緊急程度為「${selectedUrgency}」的報修。`;
-  }
-
-  for (const button of filterButtons) {
-    button.addEventListener('click', () => {
-      selectedUrgency = button.dataset.urgency;
-      applyUrgencyFilter();
-    });
   }
 
   // 只讀取畫面需要的欄位；由資料庫排序並限制最近 20 筆。
@@ -89,18 +91,18 @@
     list.setAttribute('aria-busy', 'true');
     showMessage(listMessage, '正在載入清單…');
     try {
-      const { data, error } = await client.from('repair_requests')
-        .select('id,created_at,reporter_name,location,category,description,urgency,status')
+      const { data, error } = await client.from('overtime_requests')
+        .select('id,created_at,employee_name,overtime_date,start_time,end_time,reason,status')
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
         .limit(20);
       if (error) throw error;
-      cachedRequests = data || [];
+      const rows = data || [];
       hasLoaded = true;
-      applyUrgencyFilter();
-      showMessage(listMessage, '');
+      renderRequests(rows);
+      showMessage(listMessage, rows.length ? '' : '目前還沒有加班申請紀錄。');
     } catch {
-      const retained = hasLoaded ? '保留上次載入的資料，仍可切換篩選。' : '';
+      const retained = hasLoaded ? '以下保留上次載入的資料。' : '';
       showMessage(listMessage, `無法載入清單，請稍後按「重新整理」再試。${retained}`, 'error');
     } finally {
       loading = false;
@@ -111,7 +113,7 @@
 
   // 沿用無登入示範的 anon 權限，不儲存或接收登入工作階段。
   try {
-    const config = window.REPAIR_CONFIG;
+    const config = window.APP_CONFIG;
     if (!window.supabase || !config?.supabaseUrl || !config?.supabasePublishableKey) {
       throw new Error('missing configuration');
     }
@@ -126,11 +128,11 @@
     return;
   }
 
-  // 離線時不送出、不排入佇列，避免將未傳送的報修誤報為成功。
+  // 離線時不送出、不排入佇列，避免將未傳送的申請誤報為成功。
   function updateNetworkState() {
     submitButton.disabled = saving || !navigator.onLine;
     refreshButton.disabled = loading || !navigator.onLine;
-    showMessage(networkMessage, navigator.onLine ? '' : '目前離線，無法送出報修或取得最新清單。可先填寫，恢復連線後再自行送出；輸入內容只保留在本頁，重新載入或關閉後會消失。', 'error');
+    showMessage(networkMessage, navigator.onLine ? '' : '目前離線，無法送出申請或取得最新清單。可先填寫，恢復連線後再自行送出；輸入內容只保留在本頁，重新載入或關閉後會消失。', 'error');
     if (!navigator.onLine && !loading) {
       showMessage(listMessage, '目前離線，無法讀取最新清單。' + (hasLoaded ? '以下為本頁上次讀取的資料。' : ''), 'error');
     }
@@ -142,9 +144,15 @@
   });
   updateNetworkState();
 
-  // 拒絕只有空白的必填欄位；使用者編輯後清除上次的驗證訊息。
-  for (const name of ['reporter_name', 'location', 'description']) {
-    form.elements[name].addEventListener('input', (event) => event.target.setCustomValidity(''));
+  // 使用者編輯後清除上次的驗證訊息。
+  for (const name of [...TEXT_FIELDS, 'start_time', 'end_time']) {
+    form.elements[name].addEventListener('input', (event) => {
+      event.target.setCustomValidity('');
+      if (name.endsWith('_time')) {
+        form.elements.end_time.setCustomValidity('');
+        updateDurationHint();
+      }
+    });
   }
 
   form.addEventListener('submit', async (event) => {
@@ -152,47 +160,53 @@
     if (saving) return;
     if (!navigator.onLine) {
       updateNetworkState();
-      showMessage(formMessage, '目前離線，尚未送出報修。請恢復連線後再按送出。', 'error');
+      showMessage(formMessage, '目前離線，尚未送出申請。請恢復連線後再按送出。', 'error');
       return;
     }
-    for (const name of ['reporter_name', 'location', 'description']) {
+    for (const name of TEXT_FIELDS) {
       const input = form.elements[name];
       input.setCustomValidity(input.value.trim() ? '' : '請填寫內容，不能只有空白。');
     }
+    const start = toMinutes(form.elements.start_time.value);
+    const end = toMinutes(form.elements.end_time.value);
+    form.elements.end_time.setCustomValidity(
+      !Number.isNaN(start) && !Number.isNaN(end) && end <= start ? '結束時間須晚於開始時間。' : '',
+    );
     if (!form.reportValidity()) return;
 
     const values = new FormData(form);
     // 僅送出五個可新增欄位；不送 status、id 或 created_at，使用資料庫預設值。
     const payload = {
-      reporter_name: values.get('reporter_name').trim(),
-      location: values.get('location').trim(),
-      category: values.get('category'),
-      description: values.get('description').trim(),
-      urgency: values.get('urgency'),
+      employee_name: values.get('employee_name').trim(),
+      overtime_date: values.get('overtime_date'),
+      start_time: values.get('start_time'),
+      end_time: values.get('end_time'),
+      reason: values.get('reason').trim(),
     };
     saving = true;
     fields.disabled = true;
     submitButton.textContent = '正在送出…';
     showMessage(formMessage, '正在送出，請稍候…');
     try {
-      const { error } = await client.from('repair_requests').insert(payload);
+      const { error } = await client.from('overtime_requests').insert(payload);
       if (error) throw error;
       form.reset();
-      showMessage(formMessage, '報修已成功登記，狀態為「待處理」。', 'success');
+      updateDurationHint();
+      showMessage(formMessage, '加班申請已送出，狀態為「待審核」。', 'success');
       // 若使用者正在更新清單，等待該次請求完成，再取得新增後的結果。
       if (loading) await pendingLoad;
       pendingLoad = loadRequests();
       await pendingLoad;
     } catch {
-      showMessage(formMessage, '送出未完成確認。請先重新整理清單，確認是否已登記，再決定是否重試；表單內容已保留。', 'error');
+      showMessage(formMessage, '送出未完成確認。請先重新整理清單，確認是否已送出，再決定是否重試；表單內容已保留。', 'error');
     } finally {
       saving = false;
       fields.disabled = false;
-      submitButton.textContent = '送出報修';
+      submitButton.textContent = '送出申請';
       updateNetworkState();
     }
   });
 
-  let pendingLoad = loadRequests();
+  pendingLoad = loadRequests();
   refreshButton.addEventListener('click', () => { pendingLoad = loadRequests(); });
 })();

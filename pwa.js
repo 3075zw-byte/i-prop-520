@@ -33,7 +33,7 @@
   });
 
   if (!('serviceWorker' in navigator) || !window.isSecureContext) {
-    message.textContent = '目前瀏覽器無法啟用離線功能，仍可連網使用報修網頁。';
+    message.textContent = '目前瀏覽器無法啟用離線功能，仍可連網使用加班申請網頁。';
     return;
   }
   window.addEventListener('load', async () => {
@@ -42,7 +42,7 @@
       const updateMessage = () => {
         message.textContent = registration.waiting
           ? '新版已備妥。請先完成操作，關閉此網站的所有分頁與視窗，再重新開啟更新。'
-          : '離線介面已準備完成。送出報修與讀取最新清單仍需要網路。';
+          : '離線介面已準備完成。送出申請與讀取最新清單仍需要網路。';
       };
       navigator.serviceWorker.ready.then(updateMessage);
       if (registration.waiting) updateMessage();
@@ -53,7 +53,7 @@
         });
       });
     } catch {
-      message.textContent = '離線功能未能準備完成，請連網重新開啟；報修網頁仍可連網使用。';
+      message.textContent = '離線功能未能準備完成，請連網重新開啟；加班申請網頁仍可連網使用。';
     }
   });
 })();
