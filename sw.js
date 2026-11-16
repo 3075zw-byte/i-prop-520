@@ -2,7 +2,7 @@
 
 // 發佈介面變更時建議增加版本；連網時一律先向伺服器取得最新檔案，離線才使用快取。
 const CACHE_PREFIX = `leave-shell:${self.registration.scope}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v11`;
+const CACHE_NAME = `${CACHE_PREFIX}v13`;
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js';
 const SHELL_FILES = [
   './index.html', './style.css', './app.js', './stats.js', './config.js', './holidays.js', './pwa.js',

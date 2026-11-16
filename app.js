@@ -265,6 +265,33 @@
   }
   setApplicationDate();
 
+  // 將資料庫拒絕新增的原因轉成可處理的說明；連線中斷等無法確認結果的情況，提醒先確認清單再重試。
+  function describeInsertError(error) {
+    const code = String(error?.code || '');
+    const text = `${error?.message || ''} ${error?.details || ''}`;
+    const detail = error?.message ? `（錯誤代碼 ${code || '無'}：${error.message}）` : '';
+    if (code === 'PGRST204' || code === '42703') {
+      return `資料庫缺少表單需要的欄位，申請未送出。請管理者依 README 執行 supabase/migrations 中尚未執行的檔案（例如新增假別欄位）。${detail}`;
+    }
+    if (code === '42P01' || code === 'PGRST205') {
+      return `資料庫尚未建立請假申請資料表，申請未送出。請管理者執行 supabase/schema.sql。${detail}`;
+    }
+    if (code === '42501') {
+      return `資料庫未開放新增權限，申請未送出。請管理者確認已執行 supabase/schema.sql 中的權限設定與 RLS policy。${detail}`;
+    }
+    if (code === '23514' || code === '23502' || code === '22P02' || code === '22007' || code === '22008') {
+      const field = /leave_types/.test(text) ? '假別' : /period|leave_start|leave_end/.test(text) ? '請假起訖時間'
+        : /employee_name/.test(text) ? '員工姓名' : /reason/.test(text) ? '原因說明' : '表單內容';
+      return `資料庫不接受此筆資料（${field}不符合規定），申請未送出，請修正後再試。${detail}`;
+    }
+    if (code === 'PGRST301' || code === 'PGRST302' || /api key|apikey|jwt/i.test(text)) {
+      return `資料庫連線金鑰無效，申請未送出。請管理者確認 config.js 的 Supabase 網址與 publishable key。${detail}`;
+    }
+    if (code) return `資料庫拒絕此筆申請，未送出。${detail}`;
+    const raw = error?.message ? `（${error.name || '錯誤'}：${error.message}）` : '';
+    return `送出未完成確認。請先重新整理清單，確認是否已送出，再決定是否重試；表單內容已保留。${raw}`;
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (saving) return;
@@ -310,8 +337,8 @@
       loadStats();
       pendingLoad = loadRequests();
       await pendingLoad;
-    } catch {
-      showMessage(formMessage, '送出未完成確認。請先重新整理清單，確認是否已送出，再決定是否重試；表單內容已保留。', 'error');
+    } catch (error) {
+      showMessage(formMessage, describeInsertError(error), 'error');
     } finally {
       saving = false;
       fields.disabled = false;
