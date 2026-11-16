@@ -1,8 +1,8 @@
 'use strict';
 
-// 發佈介面變更時須增加版本，讓新檔案整組快取，不混用新舊版本。
+// 發佈介面變更時建議增加版本；連網時一律先向伺服器取得最新檔案，離線才使用快取。
 const CACHE_PREFIX = `overtime-shell:${self.registration.scope}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v2`;
+const CACHE_NAME = `${CACHE_PREFIX}v3`;
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js';
 const SHELL_FILES = [
   './index.html', './style.css', './app.js', './config.js', './pwa.js',
@@ -17,8 +17,10 @@ self.addEventListener('install', (event) => {
     const cache = await caches.open(CACHE_NAME);
     // CDN SDK 也需成功快取，才將此版本視為可離線開啟。
     await cache.addAll([...SHELL_URLS, SDK_URL]);
+    // 立即接手，避免舊版 Service Worker 繼續從快取提供過期介面。
+    // 已開啟的頁面不會被重新載入，正在填寫的內容不受影響。
+    await self.skipWaiting();
   })());
-  // 不強制取代正在使用的舊版，避免打斷填表或清空輸入。
 });
 
 self.addEventListener('activate', (event) => {
@@ -49,7 +51,15 @@ self.addEventListener('fetch', (event) => {
   }
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    const cached = await cache.match(cachedUrl);
-    return cached || fetch(request);
+    // 網路優先：連網時向伺服器重新驗證並更新快取，確保看到最新版本；離線時才使用快取。
+    try {
+      const response = await fetch(cachedUrl, { cache: 'no-cache' });
+      if (response.ok) await cache.put(cachedUrl, response.clone());
+      return response;
+    } catch {
+      const cached = await cache.match(cachedUrl);
+      if (cached) return cached;
+      throw new Error('offline and not cached');
+    }
   })());
 });
