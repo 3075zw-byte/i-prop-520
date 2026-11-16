@@ -2,15 +2,16 @@
 
 // 每月請假統計：純計算函式，不接觸畫面或資料庫，可在瀏覽器與 Node 測試中共用。
 (function (root, factory) {
-  const api = factory();
+  const api = factory(root);
   if (typeof module === 'object' && module.exports) module.exports = api;
   else root.LeaveStats = api;
-})(typeof self !== 'undefined' ? self : this, () => {
+})(typeof globalThis !== 'undefined' ? globalThis : this, (root) => {
   const LEAVE_TYPES = ['事假', '病假', '特休'];
   const STATUSES = ['待審核', '已核准', '已退回'];
-  // 每日上班時段 09:00–18:00（與表單預設時間一致），請假時數只計算落在此時段內的部分。
-  const WORK_START_MIN = 9 * 60;
-  const WORK_END_MIN = 18 * 60;
+  // 上班時段、國定假日與補班日來自 holidays.js 的 LEAVE_CALENDAR；未載入時使用下列預設。
+  // 請假時數只計算工作日上班時段內的部分：不計週六、週日、國定假日與午休，補班日照常計算。
+  const DEFAULT_PERIODS = [['09:00', '12:00'], ['13:00', '18:00']];
+  const toMin = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const MINUTE = 60 * 1000;
   const DAY = 24 * 60 * MINUTE;
 
@@ -34,16 +35,51 @@
     };
   }
 
-  // 計算 [start, end) 期間內、落在每日上班時段的分鐘數。
+  // 每次計算時讀取設定，讓測試或管理者更新 holidays.js 後立即生效。
+  function calendar() {
+    const config = (root && root.LEAVE_CALENDAR) || {};
+    const periods = Array.isArray(config.workPeriods) && config.workPeriods.length
+      ? config.workPeriods.map((period) => [toMin(period.start), toMin(period.end)])
+      : DEFAULT_PERIODS.map(([from, to]) => [toMin(from), toMin(to)]);
+    const hoursPerDay = Number(config.hoursPerDay) > 0 ? Number(config.hoursPerDay) : 8;
+    return { periods, hoursPerDay, holidays: new Set(config.holidays || []), makeup: new Set(config.makeupWorkdays || []) };
+  }
+
+  // day 為某日 00:00 的 UTC 毫秒；補班日優先，其次排除國定假日與週六、週日。
+  function isWorkday(day, cal = calendar()) {
+    const date = new Date(day).toISOString().slice(0, 10);
+    if (cal.makeup.has(date)) return true;
+    if (cal.holidays.has(date)) return false;
+    const weekday = new Date(day).getUTCDay();
+    return weekday !== 0 && weekday !== 6;
+  }
+
+  // 計算 [start, end) 期間內、落在工作日上班時段的分鐘數。
   function workMinutes(start, end) {
     if (!(end > start)) return 0;
+    const cal = calendar();
     let total = 0;
     for (let day = Math.floor(start / DAY) * DAY; day < end; day += DAY) {
-      const from = Math.max(start, day + WORK_START_MIN * MINUTE);
-      const to = Math.min(end, day + WORK_END_MIN * MINUTE);
-      if (to > from) total += (to - from) / MINUTE;
+      if (!isWorkday(day, cal)) continue;
+      for (const [periodStart, periodEnd] of cal.periods) {
+        const from = Math.max(start, day + periodStart * MINUTE);
+        const to = Math.min(end, day + periodEnd * MINUTE);
+        if (to > from) total += (to - from) / MINUTE;
+      }
     }
     return total;
+  }
+
+  // 單筆申請的請假分鐘數（不分月份），供表單與清單顯示天數；格式不符回傳 NaN。
+  function leaveMinutes(request) {
+    const start = parseLocal(request.leave_start);
+    const end = parseLocal(request.leave_end);
+    if (Number.isNaN(start) || Number.isNaN(end)) return NaN;
+    return workMinutes(start, end);
+  }
+
+  function hoursPerDay() {
+    return calendar().hoursPerDay;
   }
 
   // 單筆申請在指定月份內的請假時數（小時）；跨月申請依日期分別計入各月。
@@ -122,7 +158,7 @@
 
   return {
     LEAVE_TYPES, STATUSES, HEADERS,
-    parseLocal, monthRange, workMinutes, hoursInMonth, overlapsMonth,
+    parseLocal, monthRange, isWorkday, workMinutes, leaveMinutes, hoursPerDay, hoursInMonth, overlapsMonth,
     summarizeMonth, formatHours, rowValues,
   };
 });

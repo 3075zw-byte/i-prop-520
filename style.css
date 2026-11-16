@@ -155,11 +155,11 @@ footer .footer-pill { display: inline-block; background: var(--cream); border-ra
 .status-rejected { color: var(--error); background: var(--error-bg); }
 .readonly-input { background: var(--cream-deep); color: var(--green); }
 .field-hint { font-weight: 400; }
-.signoff-target { padding: 12px 16px; border-radius: 16px; background: var(--cream-deep); font-weight: 700; }
-.signoff-target.selected { background: var(--mint); color: var(--green); }
 .card-actions { margin-top: 10px; }
 .card-actions button { min-height: 40px; padding: 6px 18px; }
 .leave-type { background: #ffe3e7; color: #8c1d2b; }
+.leave-days { background: #fff3c4; color: #6b4e00; }
+.duration-hint { font-weight: 600; }
 /* 每月請假統計表：仿試算表格線，綠色表頭，寬度不足時在表格內左右捲動。 */
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .live-indicator { display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: var(--cream-deep); font-size: .85rem; font-weight: 700; flex-shrink: 0; }
