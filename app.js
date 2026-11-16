@@ -589,7 +589,7 @@
       const title = `${summary.year} 年 ${summary.month} 月請假統計`;
       const summarySheet = XLSX.utils.aoa_to_sheet([
         [title],
-        [`產生時間：${new Date().toLocaleString('zh-TW', { hour12: false })}；時數只計工作日 09:00–12:00、13:00–18:00，不計週六、週日與國定假日`],
+        [`產生時間：${new Date().toLocaleString('zh-TW', { hour12: false })}；時數只計工作日 08:00–12:00、13:00–17:00，不計週六、週日與國定假日`],
         Stats.HEADERS,
         ...summary.rows.map(Stats.rowValues),
         ...(summary.rows.length ? [Stats.rowValues(summary.total)] : []),
