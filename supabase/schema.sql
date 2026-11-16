@@ -5,6 +5,8 @@
 -- 設計選擇：所有業務欄位必填；姓名最多 100 字、原因最多 1000 字，
 -- 拒絕純空白文字；請假結束須晚於開始，可跨日。
 -- 請假起訖以「不含時區的當地時間」（timestamp）保存，與員工輸入一致。
+-- 假別（事假、病假、特休）至少勾選一種，可複選。
+-- 若已執行過舊版本檔建立 leave_requests，請改執行 supabase/migrations/20261116_add_leave_types.sql。
 -- 示範資料僅使用虛構姓名；anon 可讀取完整清單。
 -- 主管簽核：透過 sign_leave_request 函式，須輸入正確的簽核碼；
 -- 簽核碼只以雜湊值存在 private 結構描述，前端與 API 均無法讀取。
@@ -22,7 +24,9 @@ create table public.leave_requests (
     -- 請假開始與結束（日期及時間）。
     leave_start timestamp not null,
     leave_end timestamp not null,
-    -- 請假原因。
+    -- 假別：事假、病假、特休，至少一種，可複選。
+    leave_types text[] not null,
+    -- 原因說明。
     reason text not null,
     -- 審核狀態：公開新增固定為待審核。
     status text not null default '待審核',
@@ -37,6 +41,11 @@ create table public.leave_requests (
     ),
     constraint leave_requests_period_check check (
         leave_end > leave_start
+    ),
+    constraint leave_requests_leave_types_check check (
+        cardinality(leave_types) between 1 and 3
+        and leave_types <@ array['事假', '病假', '特休']::text[]
+        and array_position(leave_types, null) is null
     ),
     constraint leave_requests_reason_check check (
         char_length(reason) between 1 and 1000
@@ -65,11 +74,12 @@ grant usage on schema public to anon;
 
 grant select on table public.leave_requests to anon;
 
--- 僅授予四個表單欄位的 INSERT 權限；id、created_at、status 由預設值產生。
+-- 僅授予五個表單欄位的 INSERT 權限；id、created_at、status 由預設值產生。
 grant insert (
     employee_name,
     leave_start,
     leave_end,
+    leave_types,
     reason
 ) on table public.leave_requests to anon;
 

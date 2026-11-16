@@ -38,12 +38,18 @@
       <form id="leave-form">
         <fieldset id="form-fields" disabled>
           <div class="form-grid">
+            <label class="full-width">申請日期<input aria-label="申請日期" id="application_date" name="application_date" type="date" readonly tabindex="-1" class="readonly-input"><span class="hint field-hint">系統自動帶入今天；實際申請時間以送出時為準。</span></label>
             <label class="full-width">員工姓名<input aria-label="員工姓名" id="employee_name" name="employee_name" required maxlength="100" placeholder="例如：虛構員工甲" autocomplete="off"></label>
             <label>開始日期<input aria-label="請假開始日期" id="start_date" name="start_date" type="date" required></label>
             <label>開始時間<input aria-label="請假開始時間" id="start_time" name="start_time" type="time" required value="09:00"></label>
             <label>結束日期<input aria-label="請假結束日期" id="end_date" name="end_date" type="date" required></label>
             <label>結束時間<input aria-label="請假結束時間" id="end_time" name="end_time" type="time" required value="18:00"></label>
-            <label class="full-width">請假原因<textarea aria-label="請假原因" id="reason" name="reason" required maxlength="1000" rows="4" placeholder="請說明請假原因（最多 1000 字）"></textarea></label>
+            <fieldset class="choice-group full-width" id="leave-types"><legend>請假原因（可複選）</legend>
+              <label class="choice"><input type="checkbox" name="leave_types" value="事假">事假</label>
+              <label class="choice"><input type="checkbox" name="leave_types" value="病假">病假</label>
+              <label class="choice"><input type="checkbox" name="leave_types" value="特休">特休</label>
+            </fieldset>
+            <label class="full-width">原因說明<textarea aria-label="原因說明" id="reason" name="reason" required maxlength="1000" rows="4" placeholder="請說明請假原因（最多 1000 字）"></textarea></label>
           </div>
           <p id="duration-hint" class="hint duration-hint" aria-live="polite"></p>
           <div class="submit-row"><p class="hint">申請時間自動產生，初始狀態為「待審核」。請假結束須晚於開始，可跨日。</p><button type="submit" id="submit-button">送出申請</button></div>
@@ -58,14 +64,14 @@
     </section>
     <section class="panel signoff-panel" aria-labelledby="signoff-title">
       <h2 id="signoff-title">主管簽核</h2>
-      <p class="hint">由主管選擇「待審核」的申請，核准或退回。須輸入管理者提供的簽核碼；每筆申請只能簽核一次，簽核時間自動產生。</p>
+      <p class="hint">在上方清單的「待審核」申請按「簽核此筆」，再於此處核准或退回。須輸入管理者提供的簽核碼；每筆申請只能簽核一次，簽核時間自動產生。</p>
       <form id="signoff-form">
         <fieldset id="signoff-fields" disabled>
           <div class="form-grid">
-            <label class="full-width">待審核申請<select aria-label="待審核申請" id="signoff_request" name="signoff_request" required><option value="">請先載入清單</option></select></label>
+            <p class="signoff-target full-width" id="signoff-target" aria-live="polite">簽核對象：尚未選擇，請在上方清單按「簽核此筆」。</p>
             <label>簽核主管<input aria-label="簽核主管" id="approver_name" name="approver_name" required maxlength="100" placeholder="例如：虛構主管甲" autocomplete="off"></label>
             <label>簽核碼<input aria-label="簽核碼" id="signoff_code" name="signoff_code" type="password" required autocomplete="off"></label>
-            <fieldset class="decision full-width"><legend>簽核結果</legend>
+            <fieldset class="choice-group full-width"><legend>簽核結果</legend>
               <label class="choice"><input type="radio" name="decision" value="已核准" required>核准</label>
               <label class="choice"><input type="radio" name="decision" value="已退回">退回</label>
             </fieldset>
