@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#16624f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <title>員工加班申請</title>
+  <title>員工請假申請</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
@@ -20,42 +20,63 @@
   <header class="page-header">
     <div class="container">
       <p class="eyebrow">人事・出勤</p>
-      <h1>員工加班申請</h1>
-      <p>填寫加班日期、時段與原因，申請時間由系統自動記錄。</p>
+      <h1>員工請假申請</h1>
+      <p>填寫請假日期、時間與原因，申請時間由系統自動記錄。</p>
     </div>
   </header>
   <main class="container">
     <section class="panel install-panel" aria-label="安裝與連線狀態">
-      <div class="section-heading"><p>將加班申請加入主畫面，方便下次開啟。</p><button type="button" id="install-button" hidden>安裝加班申請</button></div>
+      <div class="section-heading"><p>將請假申請加入主畫面，方便下次開啟。</p><button type="button" id="install-button" hidden>安裝請假申請</button></div>
       <details id="install-help"><summary>如何加入主畫面</summary><p class="hint">Android 可使用 Chrome 選單的「安裝應用程式」或「加到主畫面」；iPhone／iPad 請在 Safari 按分享，再選「加入主畫面」。選項依瀏覽器而異，請透過 HTTPS 網址開啟。</p></details>
       <p id="pwa-message" class="hint" role="status" aria-live="polite">離線功能尚未準備完成，請保持網路連線。</p>
       <p id="network-message" class="message error" role="status" aria-live="polite" hidden></p>
     </section>
     <section class="panel" aria-labelledby="form-title">
-      <h2 id="form-title">新增加班申請</h2>
+      <h2 id="form-title">新增請假申請</h2>
       <p class="hint">以下欄位皆為必填。此為公開示範，請使用虛構姓名，勿填個人資料。</p>
       <noscript><p class="message error">請啟用 JavaScript，才能送出申請及讀取清單。</p></noscript>
-      <form id="overtime-form">
+      <form id="leave-form">
         <fieldset id="form-fields" disabled>
           <div class="form-grid">
             <label class="full-width">員工姓名<input aria-label="員工姓名" id="employee_name" name="employee_name" required maxlength="100" placeholder="例如：虛構員工甲" autocomplete="off"></label>
-            <label class="full-width">加班日期<input aria-label="加班日期" id="overtime_date" name="overtime_date" type="date" required></label>
-            <label>開始時間<input aria-label="開始時間" id="start_time" name="start_time" type="time" required></label>
-            <label>結束時間<input aria-label="結束時間" id="end_time" name="end_time" type="time" required></label>
-            <label class="full-width">加班原因<textarea aria-label="加班原因" id="reason" name="reason" required maxlength="1000" rows="4" placeholder="請說明需要加班的工作內容與原因（最多 1000 字）"></textarea></label>
+            <label>開始日期<input aria-label="請假開始日期" id="start_date" name="start_date" type="date" required></label>
+            <label>開始時間<input aria-label="請假開始時間" id="start_time" name="start_time" type="time" required value="09:00"></label>
+            <label>結束日期<input aria-label="請假結束日期" id="end_date" name="end_date" type="date" required></label>
+            <label>結束時間<input aria-label="請假結束時間" id="end_time" name="end_time" type="time" required value="18:00"></label>
+            <label class="full-width">請假原因<textarea aria-label="請假原因" id="reason" name="reason" required maxlength="1000" rows="4" placeholder="請說明請假原因（最多 1000 字）"></textarea></label>
           </div>
           <p id="duration-hint" class="hint duration-hint" aria-live="polite"></p>
-          <div class="submit-row"><p class="hint">申請時間自動產生，初始狀態為「待審核」。結束時間須晚於開始時間（不跨日）。</p><button type="submit" id="submit-button">送出申請</button></div>
+          <div class="submit-row"><p class="hint">申請時間自動產生，初始狀態為「待審核」。請假結束須晚於開始，可跨日。</p><button type="submit" id="submit-button">送出申請</button></div>
         </fieldset>
       </form>
       <p id="form-message" class="message" role="status" aria-live="polite" hidden></p>
     </section>
     <section class="panel" aria-labelledby="list-title">
-      <div class="section-heading"><div><h2 id="list-title">最近加班申請</h2><p class="hint">最近 20 筆・依申請時間由新到舊・時間依你的裝置時區顯示</p></div><button id="refresh-button" class="secondary" type="button" disabled>重新整理</button></div>
+      <div class="section-heading"><div><h2 id="list-title">最近請假申請</h2><p class="hint">最近 20 筆・依申請時間由新到舊・時間依你的裝置時區顯示</p></div><button id="refresh-button" class="secondary" type="button" disabled>重新整理</button></div>
       <p id="list-message" class="message" role="status" aria-live="polite">正在載入清單…</p>
-      <ol id="request-list" class="request-list" aria-label="最近二十筆加班申請"></ol>
+      <ol id="request-list" class="request-list" aria-label="最近二十筆請假申請"></ol>
+    </section>
+    <section class="panel signoff-panel" aria-labelledby="signoff-title">
+      <h2 id="signoff-title">主管簽核</h2>
+      <p class="hint">由主管選擇「待審核」的申請，核准或退回。須輸入管理者提供的簽核碼；每筆申請只能簽核一次，簽核時間自動產生。</p>
+      <form id="signoff-form">
+        <fieldset id="signoff-fields" disabled>
+          <div class="form-grid">
+            <label class="full-width">待審核申請<select aria-label="待審核申請" id="signoff_request" name="signoff_request" required><option value="">請先載入清單</option></select></label>
+            <label>簽核主管<input aria-label="簽核主管" id="approver_name" name="approver_name" required maxlength="100" placeholder="例如：虛構主管甲" autocomplete="off"></label>
+            <label>簽核碼<input aria-label="簽核碼" id="signoff_code" name="signoff_code" type="password" required autocomplete="off"></label>
+            <fieldset class="decision full-width"><legend>簽核結果</legend>
+              <label class="choice"><input type="radio" name="decision" value="已核准" required>核准</label>
+              <label class="choice"><input type="radio" name="decision" value="已退回">退回</label>
+            </fieldset>
+            <label class="full-width">簽核意見（選填）<textarea aria-label="簽核意見" id="approver_comment" name="approver_comment" maxlength="500" rows="3" placeholder="最多 500 字"></textarea></label>
+          </div>
+          <div class="submit-row"><p class="hint">簽核後狀態與簽核資訊會顯示在上方清單，無法修改。</p><button type="submit" id="signoff-button">送出簽核</button></div>
+        </fieldset>
+      </form>
+      <p id="signoff-message" class="message" role="status" aria-live="polite" hidden></p>
     </section>
   </main>
-  <footer class="container">員工加班申請示範系統・清單內容公開可見</footer>
+  <footer class="container">員工請假申請示範系統・清單內容公開可見</footer>
 </body>
 </html>
