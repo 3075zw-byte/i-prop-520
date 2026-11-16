@@ -59,3 +59,4 @@ footer { padding: 8px 0 32px; font-size: .85rem; color: #52675f; }
   .section-heading button { padding-inline: 14px; }
   .status { margin-left: 0; }
 }
+.duration-hint { margin-top: 12px; min-height: 1.4em; }

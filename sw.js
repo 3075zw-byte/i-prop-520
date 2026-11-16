@@ -1,8 +1,8 @@
 'use strict';
 
 // 發佈介面變更時須增加版本，讓新檔案整組快取，不混用新舊版本。
-const CACHE_PREFIX = `repair-shell:${self.registration.scope}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v1`;
+const CACHE_PREFIX = `overtime-shell:${self.registration.scope}:`;
+const CACHE_NAME = `${CACHE_PREFIX}v2`;
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js';
 const SHELL_FILES = [
   './index.html', './style.css', './app.js', './config.js', './pwa.js',
@@ -24,7 +24,9 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     for (const name of await caches.keys()) {
-      if (name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME) await caches.delete(name);
+      // 同時清除改版前「報修登記」留下的舊快取。
+      const legacy = name.startsWith(`repair-shell:${self.registration.scope}:`);
+      if ((name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME) || legacy) await caches.delete(name);
     }
     await self.clients.claim();
   })());
