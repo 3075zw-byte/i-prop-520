@@ -6,6 +6,7 @@
 -- 拒絕純空白文字；請假結束須晚於開始，可跨日。
 -- 請假起訖以「不含時區的當地時間」（timestamp）保存，與員工輸入一致。
 -- 假別（事假、病假、特休）至少勾選一種，可複選。
+-- 每月統計表的即時更新：執行本檔後，再執行 supabase/migrations/20261116_enable_leave_realtime.sql。
 -- 若已執行過舊版本檔建立 leave_requests，請改執行 supabase/migrations/20261116_add_leave_types.sql。
 -- 示範資料僅使用虛構姓名；anon 可讀取完整清單。
 -- 主管簽核：透過 sign_leave_request 函式，須輸入正確的簽核碼；

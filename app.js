@@ -62,49 +62,22 @@
     };
   }
 
-  // ---- 請假天數：扣除週六、週日、國定假日與非上班時段（設定見 holidays.js）。
-  const CALENDAR = window.LEAVE_CALENDAR || {};
-  const HOLIDAYS = new Set(CALENDAR.holidays || []);
-  const MAKEUP_WORKDAYS = new Set(CALENDAR.makeupWorkdays || []);
-  const HOURS_PER_DAY = Number(CALENDAR.hoursPerDay) > 0 ? Number(CALENDAR.hoursPerDay) : 8;
+  // ---- 請假天數：與每月統計共用 stats.js 的計算，扣除週六、週日、國定假日與非上班時段（設定見 holidays.js）。
   const MAX_DAYS = 366;
-  const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-  const WORK_PERIODS = (CALENDAR.workPeriods || [{ start: '09:00', end: '12:00' }, { start: '13:00', end: '18:00' }])
-    .map((period) => [toMinutes(period.start), toMinutes(period.end)]);
 
-  function isWorkday(dateString) {
-    if (MAKEUP_WORKDAYS.has(dateString)) return true;
-    if (HOLIDAYS.has(dateString)) return false;
-    const day = new Date(`${dateString}T00:00:00Z`).getUTCDay();
-    return day !== 0 && day !== 6;
-  }
-
-  // start、end 為 "YYYY-MM-DDTHH:MM"（可帶秒）；回傳請假分鐘數，期間過長或格式不符回傳 null。
-  // 以 UTC 逐日計算，只用來推算日期，不受裝置時區或日光節約時間影響。
+  // start、end 為 "YYYY-MM-DDTHH:MM"（可帶秒）；回傳請假分鐘數，期間超過一年或格式不符回傳 null。
   function leaveMinutes(start, end) {
-    const match = (value) => /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value || '');
-    const s = match(start);
-    const e = match(end);
-    if (!s || !e) return null;
-    const first = Date.parse(`${s[1]}T00:00:00Z`);
-    const last = Date.parse(`${e[1]}T00:00:00Z`);
-    if (Number.isNaN(first) || Number.isNaN(last) || (last - first) / 86400000 > MAX_DAYS) return null;
-    let total = 0;
-    for (let day = first; day <= last; day += 86400000) {
-      const dateString = new Date(day).toISOString().slice(0, 10);
-      if (!isWorkday(dateString)) continue;
-      const from = day === first ? toMinutes(s[2]) : 0;
-      const to = day === last ? toMinutes(e[2]) : 1440;
-      for (const [workStart, workEnd] of WORK_PERIODS) {
-        total += Math.max(0, Math.min(to, workEnd) - Math.max(from, workStart));
-      }
-    }
-    return total;
+    const LeaveStats = window.LeaveStats;
+    if (!LeaveStats) return null;
+    const from = LeaveStats.parseLocal(start);
+    const to = LeaveStats.parseLocal(end);
+    if (Number.isNaN(from) || Number.isNaN(to) || (to - from) / 86400000 > MAX_DAYS) return null;
+    return LeaveStats.workMinutes(from, to);
   }
 
   function formatLeave(minutes) {
     const hours = minutes / 60;
-    const days = Math.round((hours / HOURS_PER_DAY) * 100) / 100;
+    const days = Math.round((hours / window.LeaveStats.hoursPerDay()) * 100) / 100;
     const hourText = Number.isInteger(hours) ? hours : hours.toFixed(1);
     return `${days} 天（${hourText} 小時）`;
   }
@@ -250,6 +223,8 @@
   } catch {
     showMessage(formMessage, '系統初始化失敗，請確認網路連線後重新載入頁面。', 'error');
     showMessage(listMessage, '目前無法連線，清單尚未載入。', 'error');
+    showMessage(document.querySelector('#stats-message'), '目前無法連線，統計尚未載入。', 'error');
+    document.querySelector('#live-text').textContent = '未連線';
     return;
   }
 
@@ -332,6 +307,7 @@
       showMessage(formMessage, '請假申請已送出，狀態為「待審核」。', 'success');
       // 若使用者正在更新清單，等待該次請求完成，再取得新增後的結果。
       if (loading) await pendingLoad;
+      loadStats();
       pendingLoad = loadRequests();
       await pendingLoad;
     } catch {
@@ -392,10 +368,248 @@
       signoffButton.textContent = '送出簽核';
       updateNetworkState();
     }
+    loadStats();
     if (loading) await pendingLoad;
     pendingLoad = loadRequests();
   });
 
+  // ===== 每月請假統計表（即時更新、可下載 Excel） =====
+  const Stats = window.LeaveStats;
+  const statsMonth = document.querySelector('#stats-month');
+  const statsDownload = document.querySelector('#stats-download');
+  const statsMessage = document.querySelector('#stats-message');
+  const statsHead = document.querySelector('#stats-head');
+  const statsBody = document.querySelector('#stats-body');
+  const statsFoot = document.querySelector('#stats-foot');
+  const statsCaption = document.querySelector('#stats-caption');
+  const statsUpdated = document.querySelector('#stats-updated');
+  const liveIndicator = document.querySelector('#live-indicator');
+  const liveText = document.querySelector('#live-text');
+  // 固定版本的 SheetJS，只在按下載時才載入，不影響頁面開啟速度。
+  const XLSX_URL = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+  const POLL_MS = 30000;
+  const STATS_LIMIT = 1000;
+  let statsSummary = null;
+  let statsLoading = false;
+  let statsQueued = false;
+  let realtimeOk = false;
+  let realtimeTimer;
+  let xlsxPromise;
+
+  function selectedMonth() {
+    const [year, month] = statsMonth.value.split('-').map(Number);
+    return { year, month };
+  }
+
+  // 月份選單：今天往前 24 個月、往後 3 個月，預設本月。
+  function fillMonthOptions() {
+    const now = new Date();
+    const fragment = document.createDocumentFragment();
+    for (let offset = 3; offset >= -24; offset -= 1) {
+      const date = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const option = new Option(`${date.getFullYear()} 年 ${date.getMonth() + 1} 月`, value);
+      option.selected = offset === 0;
+      fragment.append(option);
+    }
+    statsMonth.replaceChildren(fragment);
+  }
+
+  function appendCell(row, tag, value, className = '') {
+    const cell = appendText(row, tag, String(value), className);
+    if (tag === 'th') cell.scope = 'row';
+    return cell;
+  }
+
+  function renderStats(summary) {
+    const headRow = document.createDocumentFragment();
+    Stats.HEADERS.forEach((header, index) => {
+      const th = document.createElement('th');
+      th.scope = 'col';
+      th.textContent = header;
+      if (index > 0) th.className = 'num';
+      headRow.append(th);
+    });
+    statsHead.replaceChildren(headRow);
+    statsCaption.textContent = `${summary.year} 年 ${summary.month} 月請假統計`;
+
+    const body = document.createDocumentFragment();
+    for (const row of summary.rows) {
+      const tr = document.createElement('tr');
+      Stats.rowValues(row).forEach((value, index) => {
+        if (index === 0) appendCell(tr, 'th', value);
+        else appendCell(tr, 'td', typeof value === 'number' ? Stats.formatHours(value) : value, value === 0 ? 'num zero' : 'num');
+      });
+      body.append(tr);
+    }
+    statsBody.replaceChildren(body);
+
+    const foot = document.createElement('tr');
+    if (summary.rows.length) {
+      Stats.rowValues(summary.total).forEach((value, index) => {
+        if (index === 0) appendCell(foot, 'th', value);
+        else appendCell(foot, 'td', Stats.formatHours(value), 'num');
+      });
+    }
+    statsFoot.replaceChildren(...(summary.rows.length ? [foot] : []));
+  }
+
+  // 讀取與所選月份重疊的所有申請（起始早於月底、結束晚於月初），在前端彙總。
+  async function loadStats() {
+    if (statsLoading) {
+      statsQueued = true;
+      return;
+    }
+    if (!navigator.onLine) {
+      showMessage(statsMessage, '目前離線，無法更新統計。' + (statsSummary ? '以下為上次讀取的資料。' : ''), 'error');
+      return;
+    }
+    const { year, month } = selectedMonth();
+    const range = Stats.monthRange(year, month);
+    statsLoading = true;
+    statsMonth.setAttribute('aria-busy', 'true');
+    try {
+      const { data, error } = await client.from('leave_requests')
+        .select('id,created_at,employee_name,leave_start,leave_end,leave_types,status,approver_name,signed_at')
+        .lt('leave_start', range.end)
+        .gt('leave_end', range.start)
+        .order('leave_start', { ascending: true })
+        .limit(STATS_LIMIT);
+      if (error) throw error;
+      const current = selectedMonth();
+      // 讀取期間使用者已切換月份時，捨棄舊結果並改讀新月份。
+      if (current.year !== year || current.month !== month) {
+        statsQueued = true;
+        return;
+      }
+      statsSummary = Stats.summarizeMonth(data || [], year, month);
+      renderStats(statsSummary);
+      statsDownload.disabled = false;
+      const truncated = (data || []).length >= STATS_LIMIT ? `資料超過 ${STATS_LIMIT} 筆，僅統計前 ${STATS_LIMIT} 筆。` : '';
+      showMessage(statsMessage, statsSummary.rows.length ? truncated : `${year} 年 ${month} 月沒有請假申請。`, truncated ? 'error' : '');
+      statsUpdated.textContent = ` 最後更新：${new Date().toLocaleTimeString('zh-TW', { hour12: false })}。`;
+    } catch {
+      showMessage(statsMessage, '無法載入統計，系統會自動再試。' + (statsSummary ? '以下保留上次載入的資料。' : ''), 'error');
+    } finally {
+      statsLoading = false;
+      statsMonth.removeAttribute('aria-busy');
+      if (statsQueued) {
+        statsQueued = false;
+        loadStats();
+      }
+    }
+  }
+
+  function setLive(state) {
+    liveIndicator.dataset.state = state;
+    liveText.textContent = state === 'live' ? '即時更新中' : state === 'offline' ? '離線' : `每 ${POLL_MS / 1000} 秒自動更新`;
+  }
+
+  // 資料表有新增或簽核時重新讀取清單與統計；短時間內多筆變更合併為一次。
+  function onRemoteChange() {
+    clearTimeout(realtimeTimer);
+    realtimeTimer = setTimeout(() => {
+      loadStats();
+      if (!saving && !signing && !loading) pendingLoad = loadRequests();
+    }, 400);
+  }
+
+  // Supabase Realtime：須先執行 supabase/migrations/20261116_enable_leave_realtime.sql；
+  // 未啟用或連線中斷時，改以定時重新讀取作為備援。
+  function subscribeRealtime() {
+    try {
+      client.channel('leave-requests-stats')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'leave_requests' }, onRemoteChange)
+        .subscribe((status) => {
+          realtimeOk = status === 'SUBSCRIBED';
+          setLive(!navigator.onLine ? 'offline' : realtimeOk ? 'live' : 'poll');
+          if (realtimeOk) loadStats();
+        });
+    } catch {
+      realtimeOk = false;
+    }
+  }
+
+  setInterval(() => {
+    if (document.visibilityState === 'visible' && navigator.onLine && !realtimeOk) onRemoteChange();
+  }, POLL_MS);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && navigator.onLine) loadStats();
+  });
+  window.addEventListener('online', () => { setLive(realtimeOk ? 'live' : 'poll'); loadStats(); });
+  window.addEventListener('offline', () => setLive('offline'));
+
+  function loadXlsx() {
+    if (window.XLSX) return Promise.resolve(window.XLSX);
+    xlsxPromise ||= new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = XLSX_URL;
+      script.onload = () => (window.XLSX ? resolve(window.XLSX) : reject(new Error('xlsx missing')));
+      script.onerror = () => { xlsxPromise = null; reject(new Error('xlsx load failed')); };
+      document.head.append(script);
+    });
+    return xlsxPromise;
+  }
+
+  // 產生兩個工作表：「月統計」為依員工彙總，「明細」為該月每筆申請。
+  async function downloadExcel() {
+    if (!statsSummary) return;
+    const summary = statsSummary;
+    statsDownload.disabled = true;
+    statsDownload.textContent = '正在產生…';
+    try {
+      const XLSX = await loadXlsx();
+      const title = `${summary.year} 年 ${summary.month} 月請假統計`;
+      const summarySheet = XLSX.utils.aoa_to_sheet([
+        [title],
+        [`產生時間：${new Date().toLocaleString('zh-TW', { hour12: false })}；時數只計工作日 09:00–12:00、13:00–18:00，不計週六、週日與國定假日`],
+        Stats.HEADERS,
+        ...summary.rows.map(Stats.rowValues),
+        ...(summary.rows.length ? [Stats.rowValues(summary.total)] : []),
+      ]);
+      summarySheet['!cols'] = Stats.HEADERS.map((_, index) => ({ wch: index === 0 ? 18 : 11 }));
+      summarySheet['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: Stats.HEADERS.length - 1 } }];
+
+      const detailHeaders = ['員工姓名', '請假開始', '請假結束', '假別', '當月時數', '狀態', '簽核主管', '申請時間'];
+      const detailSheet = XLSX.utils.aoa_to_sheet([
+        detailHeaders,
+        ...summary.details.map((request) => [
+          request.employee_name,
+          formatLocal(request.leave_start),
+          formatLocal(request.leave_end),
+          (Array.isArray(request.leave_types) ? request.leave_types : []).join('、'),
+          Math.round(request.monthHours * 10) / 10,
+          request.status,
+          request.approver_name || '',
+          formatTimestamp(request.created_at),
+        ]),
+      ]);
+      detailSheet['!cols'] = [18, 17, 17, 14, 10, 8, 14, 20].map((wch) => ({ wch }));
+
+      const book = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book, summarySheet, '月統計');
+      XLSX.utils.book_append_sheet(book, detailSheet, '明細');
+      XLSX.writeFile(book, `請假統計_${summary.year}-${String(summary.month).padStart(2, '0')}.xlsx`);
+    } catch {
+      showMessage(statsMessage, '無法產生 Excel，請確認網路連線後再試。', 'error');
+    } finally {
+      statsDownload.disabled = false;
+      statsDownload.textContent = '下載 Excel';
+    }
+  }
+
+  fillMonthOptions();
+  statsMonth.disabled = false;
+  statsMonth.addEventListener('change', () => {
+    statsDownload.disabled = true;
+    showMessage(statsMessage, '正在載入統計…');
+    loadStats();
+  });
+  statsDownload.addEventListener('click', downloadExcel);
+  setLive(navigator.onLine ? 'poll' : 'offline');
+
   pendingLoad = loadRequests();
-  refreshButton.addEventListener('click', () => { pendingLoad = loadRequests(); });
+  loadStats();
+  subscribeRealtime();
+  refreshButton.addEventListener('click', () => { pendingLoad = loadRequests(); loadStats(); });
 })();
