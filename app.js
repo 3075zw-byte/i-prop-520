@@ -288,7 +288,8 @@
       return `資料庫連線金鑰無效，申請未送出。請管理者確認 config.js 的 Supabase 網址與 publishable key。${detail}`;
     }
     if (code) return `資料庫拒絕此筆申請，未送出。${detail}`;
-    return '送出未完成確認。請先重新整理清單，確認是否已送出，再決定是否重試；表單內容已保留。';
+    const raw = error?.message ? `（${error.name || '錯誤'}：${error.message}）` : '';
+    return `送出未完成確認。請先重新整理清單，確認是否已送出，再決定是否重試；表單內容已保留。${raw}`;
   }
 
   form.addEventListener('submit', async (event) => {
