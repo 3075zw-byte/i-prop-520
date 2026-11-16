@@ -14,7 +14,10 @@
   const signoffFields = document.querySelector('#signoff-fields');
   const signoffButton = document.querySelector('#signoff-button');
   const signoffMessage = document.querySelector('#signoff-message');
-  const signoffSelect = document.querySelector('#signoff_request');
+  const signoffTarget = document.querySelector('#signoff-target');
+  const applicationDate = document.querySelector('#application_date');
+  const leaveTypeBoxes = form.querySelectorAll('input[name="leave_types"]');
+  const LEAVE_TYPES = ['事假', '病假', '特休'];
   const TEXT_FIELDS = ['employee_name', 'reason'];
   const PERIOD_FIELDS = ['start_date', 'start_time', 'end_date', 'end_time'];
   let hasLoaded = false;
@@ -23,6 +26,8 @@
   let signing = false;
   let loading = false;
   let pendingLoad = Promise.resolve();
+  // 目前選定要簽核的申請（只記錄 id 與顯示文字）。
+  let signoffRequest = null;
 
   function showMessage(element, text, kind = '') {
     element.textContent = text;
@@ -73,21 +78,30 @@
     return Number.isNaN(date.getTime()) ? '時間不明' : date.toLocaleString('zh-TW', { hour12: false });
   }
 
-  // 簽核下拉選單只列出已載入清單中「待審核」的申請，並盡量保留目前選取。
-  function renderSignoffOptions(requests) {
-    const selected = signoffSelect.value;
-    const pending = requests.filter((request) => request.status === '待審核');
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = pending.length ? '請選擇要簽核的申請' : '目前沒有待審核的申請';
-    const options = pending.map((request) => {
-      const option = document.createElement('option');
-      option.value = request.id;
-      option.textContent = `${request.employee_name}｜${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}`;
-      return option;
-    });
-    signoffSelect.replaceChildren(placeholder, ...options);
-    if (pending.some((request) => request.id === selected)) signoffSelect.value = selected;
+  // 申請日期以裝置當地日期顯示；送出時不傳送，資料庫自動記錄申請時間。
+  function setApplicationDate() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    applicationDate.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  }
+
+  function describe(request) {
+    return `${request.employee_name}｜${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}`;
+  }
+
+  function setSignoffTarget(request) {
+    signoffRequest = request ? { id: request.id, label: describe(request) } : null;
+    signoffTarget.textContent = signoffRequest
+      ? `簽核對象：${signoffRequest.label}`
+      : '簽核對象：尚未選擇，請在上方清單按「簽核此筆」。';
+    signoffTarget.classList.toggle('selected', Boolean(signoffRequest));
+  }
+
+  // 重新載入後，若選定的申請已不是待審核，清除選取。
+  function syncSignoffTarget(requests) {
+    if (!signoffRequest) return;
+    const current = requests.find((request) => request.id === signoffRequest.id);
+    if (!current || current.status !== '待審核') setSignoffTarget(null);
   }
 
   function renderRequests(requests) {
@@ -97,6 +111,9 @@
       card.className = 'request-card';
       const top = appendText(card, 'div', '', 'card-top');
       appendText(top, 'span', `${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}`, 'badge');
+      for (const type of Array.isArray(request.leave_types) ? request.leave_types : []) {
+        appendText(top, 'span', type, 'badge leave-type');
+      }
       appendText(top, 'span', request.status, `badge status ${request.status === '已退回' ? 'status-rejected' : ''}`);
       appendText(card, 'strong', request.employee_name);
       appendText(card, 'p', request.reason, 'request-description');
@@ -104,6 +121,17 @@
       if (request.signed_at) {
         const comment = request.approver_comment ? `；意見：${request.approver_comment}` : '';
         appendText(card, 'p', `主管簽核：${request.approver_name}・${request.status}・${formatTimestamp(request.signed_at)}${comment}`, 'signoff-info');
+      } else if (request.status === '待審核') {
+        const actions = appendText(card, 'div', '', 'card-actions');
+        const button = appendText(actions, 'button', '簽核此筆', 'secondary');
+        button.type = 'button';
+        button.setAttribute('aria-label', `簽核此筆：${describe(request)}`);
+        button.addEventListener('click', () => {
+          setSignoffTarget(request);
+          showMessage(signoffMessage, '');
+          signoffForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          signoffForm.elements.approver_name.focus({ preventScroll: true });
+        });
       }
       fragment.append(card);
     }
@@ -123,7 +151,7 @@
     showMessage(listMessage, '正在載入清單…');
     try {
       const { data, error } = await client.from('leave_requests')
-        .select('id,created_at,employee_name,leave_start,leave_end,reason,status,approver_name,approver_comment,signed_at')
+        .select('id,created_at,employee_name,leave_start,leave_end,reason,leave_types,status,approver_name,approver_comment,signed_at')
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
         .limit(20);
@@ -131,7 +159,7 @@
       const rows = data || [];
       hasLoaded = true;
       renderRequests(rows);
-      renderSignoffOptions(rows);
+      syncSignoffTarget(rows);
       showMessage(listMessage, rows.length ? '' : '目前還沒有請假申請紀錄。');
     } catch {
       const retained = hasLoaded ? '以下保留上次載入的資料。' : '';
@@ -192,7 +220,11 @@
       updatePeriodHint();
     });
   }
-  form.addEventListener('reset', () => setTimeout(updatePeriodHint));
+  form.addEventListener('reset', () => setTimeout(() => { updatePeriodHint(); setApplicationDate(); }));
+  for (const box of leaveTypeBoxes) {
+    box.addEventListener('change', () => leaveTypeBoxes[0].setCustomValidity(''));
+  }
+  setApplicationDate();
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -206,15 +238,18 @@
       const input = form.elements[name];
       input.setCustomValidity(input.value.trim() ? '' : '請填寫內容，不能只有空白。');
     }
+    const leaveTypes = LEAVE_TYPES.filter((type) => form.querySelector(`input[name="leave_types"][value="${type}"]`).checked);
+    leaveTypeBoxes[0].setCustomValidity(leaveTypes.length ? '' : '請至少勾選一種假別。');
     const { start, end } = readPeriod();
     form.elements.end_time.setCustomValidity(start && end && end <= start ? '請假結束須晚於開始。' : '');
     if (!form.reportValidity()) return;
 
-    // 僅送出四個可新增欄位；不送 status、id 或 created_at，使用資料庫預設值。
+    // 僅送出五個可新增欄位；不送 status、id 或 created_at，使用資料庫預設值。
     const payload = {
       employee_name: form.elements.employee_name.value.trim(),
       leave_start: start,
       leave_end: end,
+      leave_types: leaveTypes,
       reason: form.elements.reason.value.trim(),
     };
     saving = true;
@@ -253,10 +288,14 @@
     }
     const approver = signoffForm.elements.approver_name;
     approver.setCustomValidity(approver.value.trim() ? '' : '請填寫內容，不能只有空白。');
+    if (!signoffRequest) {
+      showMessage(signoffMessage, '請先在上方清單的待審核申請按「簽核此筆」。', 'error');
+      return;
+    }
     if (!signoffForm.reportValidity()) return;
 
     const params = {
-      p_request_id: signoffSelect.value,
+      p_request_id: signoffRequest.id,
       p_decision: signoffForm.elements.decision.value,
       p_approver_name: approver.value.trim(),
       p_comment: signoffForm.elements.approver_comment.value.trim(),
@@ -270,7 +309,8 @@
       const { error } = await client.rpc('sign_leave_request', params);
       if (error) throw error;
       signoffForm.reset();
-      showMessage(signoffMessage, `簽核完成，狀態為「${params.p_decision}」。`, 'success');
+      showMessage(signoffMessage, `簽核完成：${signoffRequest.label}，狀態為「${params.p_decision}」。`, 'success');
+      setSignoffTarget(null);
     } catch (error) {
       const text = String(error?.message || '');
       const reason = text.includes('invalid supervisor code')
