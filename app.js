@@ -14,7 +14,7 @@
   const signoffFields = document.querySelector('#signoff-fields');
   const signoffButton = document.querySelector('#signoff-button');
   const signoffMessage = document.querySelector('#signoff-message');
-  const signoffTarget = document.querySelector('#signoff-target');
+  const signoffSelect = document.querySelector('#signoff_request');
   const applicationDate = document.querySelector('#application_date');
   const leaveTypeBoxes = form.querySelectorAll('input[name="leave_types"]');
   const LEAVE_TYPES = ['事假', '病假', '特休'];
@@ -26,8 +26,8 @@
   let signing = false;
   let loading = false;
   let pendingLoad = Promise.resolve();
-  // 目前選定要簽核的申請（只記錄 id 與顯示文字）。
-  let signoffRequest = null;
+  // 已載入清單中待審核申請的顯示文字，供簽核成功訊息使用。
+  const pendingLabels = new Map();
 
   function showMessage(element, text, kind = '') {
     element.textContent = text;
@@ -62,14 +62,70 @@
     };
   }
 
+  // ---- 請假天數：扣除週六、週日、國定假日與非上班時段（設定見 holidays.js）。
+  const CALENDAR = window.LEAVE_CALENDAR || {};
+  const HOLIDAYS = new Set(CALENDAR.holidays || []);
+  const MAKEUP_WORKDAYS = new Set(CALENDAR.makeupWorkdays || []);
+  const HOURS_PER_DAY = Number(CALENDAR.hoursPerDay) > 0 ? Number(CALENDAR.hoursPerDay) : 8;
+  const MAX_DAYS = 366;
+  const toMinutes = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+  const WORK_PERIODS = (CALENDAR.workPeriods || [{ start: '09:00', end: '12:00' }, { start: '13:00', end: '18:00' }])
+    .map((period) => [toMinutes(period.start), toMinutes(period.end)]);
+
+  function isWorkday(dateString) {
+    if (MAKEUP_WORKDAYS.has(dateString)) return true;
+    if (HOLIDAYS.has(dateString)) return false;
+    const day = new Date(`${dateString}T00:00:00Z`).getUTCDay();
+    return day !== 0 && day !== 6;
+  }
+
+  // start、end 為 "YYYY-MM-DDTHH:MM"（可帶秒）；回傳請假分鐘數，期間過長或格式不符回傳 null。
+  // 以 UTC 逐日計算，只用來推算日期，不受裝置時區或日光節約時間影響。
+  function leaveMinutes(start, end) {
+    const match = (value) => /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(value || '');
+    const s = match(start);
+    const e = match(end);
+    if (!s || !e) return null;
+    const first = Date.parse(`${s[1]}T00:00:00Z`);
+    const last = Date.parse(`${e[1]}T00:00:00Z`);
+    if (Number.isNaN(first) || Number.isNaN(last) || (last - first) / 86400000 > MAX_DAYS) return null;
+    let total = 0;
+    for (let day = first; day <= last; day += 86400000) {
+      const dateString = new Date(day).toISOString().slice(0, 10);
+      if (!isWorkday(dateString)) continue;
+      const from = day === first ? toMinutes(s[2]) : 0;
+      const to = day === last ? toMinutes(e[2]) : 1440;
+      for (const [workStart, workEnd] of WORK_PERIODS) {
+        total += Math.max(0, Math.min(to, workEnd) - Math.max(from, workStart));
+      }
+    }
+    return total;
+  }
+
+  function formatLeave(minutes) {
+    const hours = minutes / 60;
+    const days = Math.round((hours / HOURS_PER_DAY) * 100) / 100;
+    const hourText = Number.isInteger(hours) ? hours : hours.toFixed(1);
+    return `${days} 天（${hourText} 小時）`;
+  }
+
   function updatePeriodHint() {
     const { start, end } = readPeriod();
     if (!start || !end) {
       periodHint.textContent = '';
-    } else if (end <= start) {
+      return;
+    }
+    if (end <= start) {
       periodHint.textContent = '請假結束須晚於開始。';
+      return;
+    }
+    const minutes = leaveMinutes(start, end);
+    if (minutes === null) {
+      periodHint.textContent = `請假期間：${formatLocal(start)} 至 ${formatLocal(end)}。期間超過一年，無法計算天數。`;
+    } else if (minutes === 0) {
+      periodHint.textContent = `請假期間：${formatLocal(start)} 至 ${formatLocal(end)}。此期間都是例假日或非上班時間，不需請假。`;
     } else {
-      periodHint.textContent = `請假期間：${formatLocal(start)} 至 ${formatLocal(end)}。`;
+      periodHint.textContent = `請假期間：${formatLocal(start)} 至 ${formatLocal(end)}，扣除例假日後共 ${formatLeave(minutes)}。`;
     }
   }
 
@@ -86,22 +142,28 @@
   }
 
   function describe(request) {
-    return `${request.employee_name}｜${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}`;
+    const minutes = leaveMinutes(request.leave_start, request.leave_end);
+    const days = minutes ? `｜${formatLeave(minutes)}` : '';
+    return `${request.employee_name}｜${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}${days}`;
   }
 
-  function setSignoffTarget(request) {
-    signoffRequest = request ? { id: request.id, label: describe(request) } : null;
-    signoffTarget.textContent = signoffRequest
-      ? `簽核對象：${signoffRequest.label}`
-      : '簽核對象：尚未選擇，請在上方清單按「簽核此筆」。';
-    signoffTarget.classList.toggle('selected', Boolean(signoffRequest));
-  }
-
-  // 重新載入後，若選定的申請已不是待審核，清除選取。
-  function syncSignoffTarget(requests) {
-    if (!signoffRequest) return;
-    const current = requests.find((request) => request.id === signoffRequest.id);
-    if (!current || current.status !== '待審核') setSignoffTarget(null);
+  // 待審核下拉選單只列出已載入清單中「待審核」的申請，並盡量保留目前選取。
+  function renderSignoffOptions(requests) {
+    const selected = signoffSelect.value;
+    const pending = requests.filter((request) => request.status === '待審核');
+    pendingLabels.clear();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = pending.length ? '請選擇要簽核的申請' : '目前沒有待審核的申請';
+    const options = pending.map((request) => {
+      pendingLabels.set(request.id, describe(request));
+      const option = document.createElement('option');
+      option.value = request.id;
+      option.textContent = describe(request);
+      return option;
+    });
+    signoffSelect.replaceChildren(placeholder, ...options);
+    if (pendingLabels.has(selected)) signoffSelect.value = selected;
   }
 
   function renderRequests(requests) {
@@ -111,6 +173,8 @@
       card.className = 'request-card';
       const top = appendText(card, 'div', '', 'card-top');
       appendText(top, 'span', `${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}`, 'badge');
+      const minutes = leaveMinutes(request.leave_start, request.leave_end);
+      if (minutes !== null) appendText(top, 'span', formatLeave(minutes), 'badge leave-days');
       for (const type of Array.isArray(request.leave_types) ? request.leave_types : []) {
         appendText(top, 'span', type, 'badge leave-type');
       }
@@ -127,7 +191,7 @@
         button.type = 'button';
         button.setAttribute('aria-label', `簽核此筆：${describe(request)}`);
         button.addEventListener('click', () => {
-          setSignoffTarget(request);
+          signoffSelect.value = request.id;
           showMessage(signoffMessage, '');
           signoffForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
           signoffForm.elements.approver_name.focus({ preventScroll: true });
@@ -159,7 +223,7 @@
       const rows = data || [];
       hasLoaded = true;
       renderRequests(rows);
-      syncSignoffTarget(rows);
+      renderSignoffOptions(rows);
       showMessage(listMessage, rows.length ? '' : '目前還沒有請假申請紀錄。');
     } catch {
       const retained = hasLoaded ? '以下保留上次載入的資料。' : '';
@@ -241,7 +305,12 @@
     const leaveTypes = LEAVE_TYPES.filter((type) => form.querySelector(`input[name="leave_types"][value="${type}"]`).checked);
     leaveTypeBoxes[0].setCustomValidity(leaveTypes.length ? '' : '請至少勾選一種假別。');
     const { start, end } = readPeriod();
-    form.elements.end_time.setCustomValidity(start && end && end <= start ? '請假結束須晚於開始。' : '');
+    const minutes = start && end && end > start ? leaveMinutes(start, end) : null;
+    form.elements.end_time.setCustomValidity(
+      start && end && end <= start ? '請假結束須晚於開始。'
+        : minutes === 0 ? '此期間都是例假日或非上班時間，不需請假。'
+          : start && end && minutes === null ? '請假期間不可超過一年。' : '',
+    );
     if (!form.reportValidity()) return;
 
     // 僅送出五個可新增欄位；不送 status、id 或 created_at，使用資料庫預設值。
@@ -288,14 +357,11 @@
     }
     const approver = signoffForm.elements.approver_name;
     approver.setCustomValidity(approver.value.trim() ? '' : '請填寫內容，不能只有空白。');
-    if (!signoffRequest) {
-      showMessage(signoffMessage, '請先在上方清單的待審核申請按「簽核此筆」。', 'error');
-      return;
-    }
     if (!signoffForm.reportValidity()) return;
 
+    const label = pendingLabels.get(signoffSelect.value) || '';
     const params = {
-      p_request_id: signoffRequest.id,
+      p_request_id: signoffSelect.value,
       p_decision: signoffForm.elements.decision.value,
       p_approver_name: approver.value.trim(),
       p_comment: signoffForm.elements.approver_comment.value.trim(),
@@ -309,8 +375,7 @@
       const { error } = await client.rpc('sign_leave_request', params);
       if (error) throw error;
       signoffForm.reset();
-      showMessage(signoffMessage, `簽核完成：${signoffRequest.label}，狀態為「${params.p_decision}」。`, 'success');
-      setSignoffTarget(null);
+      showMessage(signoffMessage, `簽核完成：${label}，狀態為「${params.p_decision}」。`, 'success');
     } catch (error) {
       const text = String(error?.message || '');
       const reason = text.includes('invalid supervisor code')

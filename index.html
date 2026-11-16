@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="./style.css">
   <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js"></script>
   <script defer src="./config.js"></script>
+  <script defer src="./holidays.js"></script>
   <script defer src="./app.js"></script>
   <script defer src="./pwa.js"></script>
 </head>
@@ -66,11 +67,11 @@
     </section>
     <section class="panel signoff-panel" aria-labelledby="signoff-title">
       <h2 id="signoff-title">主管簽核</h2>
-      <p class="hint">在上方清單的「待審核」申請按「簽核此筆」，再於此處核准或退回。須輸入管理者提供的簽核碼；每筆申請只能簽核一次，簽核時間自動產生。</p>
+      <p class="hint">選擇「待審核」的申請（也可在上方清單按「簽核此筆」帶入），核准或退回。須輸入管理者提供的簽核碼；每筆申請只能簽核一次，簽核時間自動產生。</p>
       <form id="signoff-form">
         <fieldset id="signoff-fields" disabled>
           <div class="form-grid">
-            <p class="signoff-target full-width" id="signoff-target" aria-live="polite">簽核對象：尚未選擇，請在上方清單按「簽核此筆」。</p>
+            <label class="full-width">待審核申請<select aria-label="待審核申請" id="signoff_request" name="signoff_request" required><option value="">請先載入清單</option></select></label>
             <label>簽核主管<input aria-label="簽核主管" id="approver_name" name="approver_name" required maxlength="100" placeholder="例如：虛構主管甲" autocomplete="off"></label>
             <label>簽核碼<input aria-label="簽核碼" id="signoff_code" name="signoff_code" type="password" required autocomplete="off"></label>
             <fieldset class="choice-group full-width"><legend>簽核結果</legend>

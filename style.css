@@ -155,8 +155,8 @@ footer .footer-pill { display: inline-block; background: var(--cream); border-ra
 .status-rejected { color: var(--error); background: var(--error-bg); }
 .readonly-input { background: var(--cream-deep); color: var(--green); }
 .field-hint { font-weight: 400; }
-.signoff-target { padding: 12px 16px; border-radius: 16px; background: var(--cream-deep); font-weight: 700; }
-.signoff-target.selected { background: var(--mint); color: var(--green); }
 .card-actions { margin-top: 10px; }
 .card-actions button { min-height: 40px; padding: 6px 18px; }
 .leave-type { background: #ffe3e7; color: #8c1d2b; }
+.leave-days { background: #fff3c4; color: #6b4e00; }
+.duration-hint { font-weight: 600; }
