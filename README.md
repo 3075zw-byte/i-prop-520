@@ -34,11 +34,20 @@ values (extensions.crypt('自訂簽核碼', extensions.gen_salt('bf')));
 
 **限制：** 此示範沒有登入與嘗試次數限制，簽核碼外流或過短即可能被冒用；正式使用前應改為 Supabase Auth 主管帳號。
 
+## 每月請假統計表
+
+頁面最下方的「每月請假統計表」以試算表樣式，依員工彙總所選月份的請假申請：申請筆數、事假／病假／特休筆數、請假時數、已核准時數，以及待審核／已核准／已退回筆數，最後一列為合計。
+
+- 請假時數只計算每日 09:00–18:00 之間的部分；跨日、跨月申請依日期分別計入各月。假別複選時，各假別都計 1 筆。
+- **即時顯示：** 有人新增申請或主管簽核時，統計表與清單會自動更新（右上角顯示「即時更新中」）。須由管理者在 Supabase 執行 `supabase/migrations/20261116_enable_leave_realtime.sql`，將 `leave_requests` 加入 Realtime；未執行或連線中斷時，網頁每 30 秒自動重新讀取（顯示「每 30 秒自動更新」）。此 migration 不變更權限或 RLS。
+- **下載 Excel：** 按「下載 Excel」產生 `請假統計_YYYY-MM.xlsx`，含「月統計」與「明細」兩個工作表。Excel 由瀏覽器以固定版本 SheetJS（`xlsx@0.18.5`，CDN）產生，只在按下載時載入，需要連線。
+- 統計計算在 `stats.js`，測試在 `tests/stats.test.js`，執行 `node --test tests/stats.test.js`（Node 18 以上，不需安裝套件）。
+
 ## 開發與部署
 
 純 HTML、CSS 與 JavaScript，透過 CDN 載入 supabase-js v2，不需要安裝套件或建置。
 在儲存庫根目錄執行 `python -m http.server 8000`，再開啟 http://localhost:8000 預覽。
-JavaScript 語法可用 `node --check app.js` 與 `node --check config.js` 檢查。
+JavaScript 語法可用 `node --check app.js`、`node --check stats.js` 與 `node --check config.js` 檢查。
 
 `config.js` 僅包含 Supabase 專案網址與公開 publishable key，禁止放入 secret 或 service_role 金鑰。
 使用網頁前，須由專案管理者在 Supabase 執行 `supabase/schema.sql`，建立 `public.leave_requests` 資料表、安全政策與簽核函式（一般使用者可新增、可讀取，不可直接修改或刪除）；網頁不會執行 SQL。舊的 `repair_requests`、`overtime_requests` 資料表不受影響。
