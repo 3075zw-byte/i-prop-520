@@ -1,8 +1,8 @@
 'use strict';
 
 // 發佈介面變更時建議增加版本；連網時一律先向伺服器取得最新檔案，離線才使用快取。
-const CACHE_PREFIX = `overtime-shell:${self.registration.scope}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v3`;
+const CACHE_PREFIX = `leave-shell:${self.registration.scope}:`;
+const CACHE_NAME = `${CACHE_PREFIX}v4`;
 const SDK_URL = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.119.0/dist/umd/supabase.js';
 const SHELL_FILES = [
   './index.html', './style.css', './app.js', './config.js', './pwa.js',
@@ -26,8 +26,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     for (const name of await caches.keys()) {
-      // 同時清除改版前「報修登記」留下的舊快取。
-      const legacy = name.startsWith(`repair-shell:${self.registration.scope}:`);
+      // 同時清除改版前「報修登記」「加班申請」留下的舊快取。
+      const legacy = ['repair-shell', 'overtime-shell'].some((prefix) => name.startsWith(`${prefix}:${self.registration.scope}:`));
       if ((name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME) || legacy) await caches.delete(name);
     }
     await self.clients.claim();

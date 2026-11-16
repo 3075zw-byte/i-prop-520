@@ -33,7 +33,7 @@
   });
 
   if (!('serviceWorker' in navigator) || !window.isSecureContext) {
-    message.textContent = '目前瀏覽器無法啟用離線功能，仍可連網使用加班申請網頁。';
+    message.textContent = '目前瀏覽器無法啟用離線功能，仍可連網使用請假申請網頁。';
     return;
   }
   window.addEventListener('load', async () => {
@@ -53,7 +53,7 @@
         });
       });
     } catch {
-      message.textContent = '離線功能未能準備完成，請連網重新開啟；加班申請網頁仍可連網使用。';
+      message.textContent = '離線功能未能準備完成，請連網重新開啟；請假申請網頁仍可連網使用。';
     }
   });
 })();

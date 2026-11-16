@@ -1,7 +1,7 @@
 'use strict';
 
 (() => {
-  const form = document.querySelector('#overtime-form');
+  const form = document.querySelector('#leave-form');
   const fields = document.querySelector('#form-fields');
   const submitButton = document.querySelector('#submit-button');
   const refreshButton = document.querySelector('#refresh-button');
@@ -9,11 +9,18 @@
   const listMessage = document.querySelector('#list-message');
   const list = document.querySelector('#request-list');
   const networkMessage = document.querySelector('#network-message');
-  const durationHint = document.querySelector('#duration-hint');
+  const periodHint = document.querySelector('#duration-hint');
+  const signoffForm = document.querySelector('#signoff-form');
+  const signoffFields = document.querySelector('#signoff-fields');
+  const signoffButton = document.querySelector('#signoff-button');
+  const signoffMessage = document.querySelector('#signoff-message');
+  const signoffSelect = document.querySelector('#signoff_request');
   const TEXT_FIELDS = ['employee_name', 'reason'];
+  const PERIOD_FIELDS = ['start_date', 'start_time', 'end_date', 'end_time'];
   let hasLoaded = false;
   let client;
   let saving = false;
+  let signing = false;
   let loading = false;
   let pendingLoad = Promise.resolve();
 
@@ -32,28 +39,55 @@
     return element;
   }
 
-  // "HH:MM" 或 "HH:MM:SS" 轉為當日分鐘數；格式不符回傳 NaN。
-  function toMinutes(value) {
-    const match = /^(\d{2}):(\d{2})/.exec(value || '');
-    return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+  // 日期 "YYYY-MM-DD" 與時間 "HH:MM" 組成不含時區的當地時間 "YYYY-MM-DDTHH:MM"；不完整時回傳空字串。
+  function combine(date, time) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time) ? `${date}T${time}` : '';
   }
 
-  function formatDuration(minutes) {
-    const hours = Math.floor(minutes / 60);
-    const rest = minutes % 60;
-    return rest ? `${hours} 小時 ${rest} 分` : `${hours} 小時`;
+  // 資料庫回傳 "YYYY-MM-DDTHH:MM:SS"，顯示為 "YYYY-MM-DD HH:MM"；不經時區換算。
+  function formatLocal(value) {
+    return (value || '').slice(0, 16).replace('T', ' ');
   }
 
-  function updateDurationHint() {
-    const start = toMinutes(form.elements.start_time.value);
-    const end = toMinutes(form.elements.end_time.value);
-    if (Number.isNaN(start) || Number.isNaN(end)) {
-      durationHint.textContent = '';
+  function readPeriod() {
+    const values = Object.fromEntries(PERIOD_FIELDS.map((name) => [name, form.elements[name].value]));
+    return {
+      start: combine(values.start_date, values.start_time),
+      end: combine(values.end_date, values.end_time),
+    };
+  }
+
+  function updatePeriodHint() {
+    const { start, end } = readPeriod();
+    if (!start || !end) {
+      periodHint.textContent = '';
     } else if (end <= start) {
-      durationHint.textContent = '結束時間須晚於開始時間。';
+      periodHint.textContent = '請假結束須晚於開始。';
     } else {
-      durationHint.textContent = `預計加班 ${formatDuration(end - start)}。`;
+      periodHint.textContent = `請假期間：${formatLocal(start)} 至 ${formatLocal(end)}。`;
     }
+  }
+
+  function formatTimestamp(value) {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '時間不明' : date.toLocaleString('zh-TW', { hour12: false });
+  }
+
+  // 簽核下拉選單只列出已載入清單中「待審核」的申請，並盡量保留目前選取。
+  function renderSignoffOptions(requests) {
+    const selected = signoffSelect.value;
+    const pending = requests.filter((request) => request.status === '待審核');
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = pending.length ? '請選擇要簽核的申請' : '目前沒有待審核的申請';
+    const options = pending.map((request) => {
+      const option = document.createElement('option');
+      option.value = request.id;
+      option.textContent = `${request.employee_name}｜${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}`;
+      return option;
+    });
+    signoffSelect.replaceChildren(placeholder, ...options);
+    if (pending.some((request) => request.id === selected)) signoffSelect.value = selected;
   }
 
   function renderRequests(requests) {
@@ -62,18 +96,15 @@
       const card = document.createElement('li');
       card.className = 'request-card';
       const top = appendText(card, 'div', '', 'card-top');
-      const start = (request.start_time || '').slice(0, 5);
-      const end = (request.end_time || '').slice(0, 5);
-      appendText(top, 'span', request.overtime_date, 'badge');
-      appendText(top, 'span', `${start}–${end}`, 'badge');
-      const minutes = toMinutes(end) - toMinutes(start);
-      if (minutes > 0) appendText(top, 'span', formatDuration(minutes), 'badge');
-      appendText(top, 'span', request.status, 'badge status');
+      appendText(top, 'span', `${formatLocal(request.leave_start)} 至 ${formatLocal(request.leave_end)}`, 'badge');
+      appendText(top, 'span', request.status, `badge status ${request.status === '已退回' ? 'status-rejected' : ''}`);
       appendText(card, 'strong', request.employee_name);
       appendText(card, 'p', request.reason, 'request-description');
-      const date = new Date(request.created_at);
-      const time = Number.isNaN(date.getTime()) ? '時間不明' : date.toLocaleString('zh-TW', { hour12: false });
-      appendText(card, 'p', `申請時間：${time}`, 'request-meta');
+      appendText(card, 'p', `申請時間：${formatTimestamp(request.created_at)}`, 'request-meta');
+      if (request.signed_at) {
+        const comment = request.approver_comment ? `；意見：${request.approver_comment}` : '';
+        appendText(card, 'p', `主管簽核：${request.approver_name}・${request.status}・${formatTimestamp(request.signed_at)}${comment}`, 'signoff-info');
+      }
       fragment.append(card);
     }
     list.replaceChildren(fragment);
@@ -91,8 +122,8 @@
     list.setAttribute('aria-busy', 'true');
     showMessage(listMessage, '正在載入清單…');
     try {
-      const { data, error } = await client.from('overtime_requests')
-        .select('id,created_at,employee_name,overtime_date,start_time,end_time,reason,status')
+      const { data, error } = await client.from('leave_requests')
+        .select('id,created_at,employee_name,leave_start,leave_end,reason,status,approver_name,approver_comment,signed_at')
         .order('created_at', { ascending: false })
         .order('id', { ascending: false })
         .limit(20);
@@ -100,7 +131,8 @@
       const rows = data || [];
       hasLoaded = true;
       renderRequests(rows);
-      showMessage(listMessage, rows.length ? '' : '目前還沒有加班申請紀錄。');
+      renderSignoffOptions(rows);
+      showMessage(listMessage, rows.length ? '' : '目前還沒有請假申請紀錄。');
     } catch {
       const retained = hasLoaded ? '以下保留上次載入的資料。' : '';
       showMessage(listMessage, `無法載入清單，請稍後按「重新整理」再試。${retained}`, 'error');
@@ -121,6 +153,7 @@
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
     });
     fields.disabled = false;
+    signoffFields.disabled = false;
     refreshButton.disabled = false;
   } catch {
     showMessage(formMessage, '系統初始化失敗，請確認網路連線後重新載入頁面。', 'error');
@@ -131,6 +164,7 @@
   // 離線時不送出、不排入佇列，避免將未傳送的申請誤報為成功。
   function updateNetworkState() {
     submitButton.disabled = saving || !navigator.onLine;
+    signoffButton.disabled = signing || !navigator.onLine;
     refreshButton.disabled = loading || !navigator.onLine;
     showMessage(networkMessage, navigator.onLine ? '' : '目前離線，無法送出申請或取得最新清單。可先填寫，恢復連線後再自行送出；輸入內容只保留在本頁，重新載入或關閉後會消失。', 'error');
     if (!navigator.onLine && !loading) {
@@ -144,16 +178,21 @@
   });
   updateNetworkState();
 
-  // 使用者編輯後清除上次的驗證訊息。
-  for (const name of [...TEXT_FIELDS, 'start_time', 'end_time']) {
-    form.elements[name].addEventListener('input', (event) => {
-      event.target.setCustomValidity('');
-      if (name.endsWith('_time')) {
-        form.elements.end_time.setCustomValidity('');
-        updateDurationHint();
-      }
+  for (const name of TEXT_FIELDS) {
+    form.elements[name].addEventListener('input', (event) => event.target.setCustomValidity(''));
+  }
+  // 選了開始日期而結束日期尚未填寫時，預設為同一天。
+  form.elements.start_date.addEventListener('change', () => {
+    if (!form.elements.end_date.value) form.elements.end_date.value = form.elements.start_date.value;
+    updatePeriodHint();
+  });
+  for (const name of PERIOD_FIELDS) {
+    form.elements[name].addEventListener('input', () => {
+      form.elements.end_time.setCustomValidity('');
+      updatePeriodHint();
     });
   }
+  form.addEventListener('reset', () => setTimeout(updatePeriodHint));
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -167,32 +206,26 @@
       const input = form.elements[name];
       input.setCustomValidity(input.value.trim() ? '' : '請填寫內容，不能只有空白。');
     }
-    const start = toMinutes(form.elements.start_time.value);
-    const end = toMinutes(form.elements.end_time.value);
-    form.elements.end_time.setCustomValidity(
-      !Number.isNaN(start) && !Number.isNaN(end) && end <= start ? '結束時間須晚於開始時間。' : '',
-    );
+    const { start, end } = readPeriod();
+    form.elements.end_time.setCustomValidity(start && end && end <= start ? '請假結束須晚於開始。' : '');
     if (!form.reportValidity()) return;
 
-    const values = new FormData(form);
-    // 僅送出五個可新增欄位；不送 status、id 或 created_at，使用資料庫預設值。
+    // 僅送出四個可新增欄位；不送 status、id 或 created_at，使用資料庫預設值。
     const payload = {
-      employee_name: values.get('employee_name').trim(),
-      overtime_date: values.get('overtime_date'),
-      start_time: values.get('start_time'),
-      end_time: values.get('end_time'),
-      reason: values.get('reason').trim(),
+      employee_name: form.elements.employee_name.value.trim(),
+      leave_start: start,
+      leave_end: end,
+      reason: form.elements.reason.value.trim(),
     };
     saving = true;
     fields.disabled = true;
     submitButton.textContent = '正在送出…';
     showMessage(formMessage, '正在送出，請稍候…');
     try {
-      const { error } = await client.from('overtime_requests').insert(payload);
+      const { error } = await client.from('leave_requests').insert(payload);
       if (error) throw error;
       form.reset();
-      updateDurationHint();
-      showMessage(formMessage, '加班申請已送出，狀態為「待審核」。', 'success');
+      showMessage(formMessage, '請假申請已送出，狀態為「待審核」。', 'success');
       // 若使用者正在更新清單，等待該次請求完成，再取得新增後的結果。
       if (loading) await pendingLoad;
       pendingLoad = loadRequests();
@@ -205,6 +238,57 @@
       submitButton.textContent = '送出申請';
       updateNetworkState();
     }
+  });
+
+  signoffForm.elements.approver_name.addEventListener('input', (event) => event.target.setCustomValidity(''));
+
+  // 主管簽核：呼叫資料庫函式，由資料庫檢查簽核碼並只允許簽核「待審核」的申請。
+  signoffForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (signing) return;
+    if (!navigator.onLine) {
+      updateNetworkState();
+      showMessage(signoffMessage, '目前離線，尚未送出簽核。請恢復連線後再按送出。', 'error');
+      return;
+    }
+    const approver = signoffForm.elements.approver_name;
+    approver.setCustomValidity(approver.value.trim() ? '' : '請填寫內容，不能只有空白。');
+    if (!signoffForm.reportValidity()) return;
+
+    const params = {
+      p_request_id: signoffSelect.value,
+      p_decision: signoffForm.elements.decision.value,
+      p_approver_name: approver.value.trim(),
+      p_comment: signoffForm.elements.approver_comment.value.trim(),
+      p_code: signoffForm.elements.signoff_code.value,
+    };
+    signing = true;
+    signoffFields.disabled = true;
+    signoffButton.textContent = '正在送出…';
+    showMessage(signoffMessage, '正在送出簽核，請稍候…');
+    try {
+      const { error } = await client.rpc('sign_leave_request', params);
+      if (error) throw error;
+      signoffForm.reset();
+      showMessage(signoffMessage, `簽核完成，狀態為「${params.p_decision}」。`, 'success');
+    } catch (error) {
+      const text = String(error?.message || '');
+      const reason = text.includes('invalid supervisor code')
+        ? '簽核碼不正確，請向管理者確認。'
+        : text.includes('already signed')
+          ? '這筆申請已被簽核或不存在，請重新整理清單。'
+          : '簽核未完成確認。請先重新整理清單，確認狀態後再決定是否重試。';
+      showMessage(signoffMessage, reason, 'error');
+      // 不保留簽核碼於畫面，避免他人使用同一裝置時看到或重送。
+      signoffForm.elements.signoff_code.value = '';
+    } finally {
+      signing = false;
+      signoffFields.disabled = false;
+      signoffButton.textContent = '送出簽核';
+      updateNetworkState();
+    }
+    if (loading) await pendingLoad;
+    pendingLoad = loadRequests();
   });
 
   pendingLoad = loadRequests();

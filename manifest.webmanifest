@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "員工加班申請",
-  "short_name": "加班申請",
-  "description": "填寫員工加班申請並查閱最近申請清單，送出與讀取資料需要網路。",
+  "name": "員工請假申請",
+  "short_name": "請假申請",
+  "description": "填寫員工請假申請並查閱最近申請清單，送出與讀取資料需要網路。",
   "lang": "zh-Hant",
   "start_url": "./",
   "scope": "./",

@@ -60,3 +60,9 @@ footer { padding: 8px 0 32px; font-size: .85rem; color: #52675f; }
   .status { margin-left: 0; }
 }
 .duration-hint { margin-top: 12px; min-height: 1.4em; }
+.decision { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 0; }
+.decision legend { font-weight: 600; margin-bottom: 8px; padding: 0; }
+.choice { flex-direction: row; align-items: center; gap: 8px; font-weight: 500; min-height: 44px; }
+.choice input { width: 22px; min-height: 22px; height: 22px; margin: 0; accent-color: #16624f; }
+.signoff-info { margin-top: 8px; padding: 10px 12px; border-left: 3px solid #16624f; background: #f0f5f2; border-radius: 6px; font-size: .9rem; }
+.status-rejected { color: #922b27; background: #fff0ee; }
