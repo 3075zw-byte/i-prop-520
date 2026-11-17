@@ -73,7 +73,7 @@
         <fieldset id="signoff-fields" disabled>
           <div class="form-grid">
             <label class="full-width">待審核申請<select aria-label="待審核申請" id="signoff_request" name="signoff_request" required><option value="">請先載入清單</option></select></label>
-            <label>簽核主管<input aria-label="簽核主管" id="approver_name" name="approver_name" required maxlength="100" placeholder="例如：虛構主管甲" autocomplete="off"></label>
+            <label>簽核主管<select aria-label="簽核主管" id="approver_name" name="approver_name" required><option value="">請選擇職稱</option><option value="廠長">廠長</option><option value="副廠長">副廠長</option><option value="課長">課長</option><option value="副課長">副課長</option></select></label>
             <label>簽核碼<input aria-label="簽核碼" id="signoff_code" name="signoff_code" type="password" required autocomplete="off"></label>
             <fieldset class="choice-group full-width"><legend>簽核結果</legend>
               <label class="choice"><input type="radio" name="decision" value="已核准" required>核准</label>

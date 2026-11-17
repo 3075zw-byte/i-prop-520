@@ -31,17 +31,24 @@
 
 ## 主管簽核
 
-頁面最下方為「主管簽核」：在「待審核申請」下拉選單選擇申請（也可按清單卡片的「簽核此筆」自動帶入），填寫簽核主管、簽核碼，選擇核准或退回，可加註意見（最多 500 字）。
+頁面最下方為「主管簽核」：在「待審核申請」下拉選單選擇申請（也可按清單卡片的「簽核此筆」自動帶入），選擇簽核主管職稱（廠長、副廠長、課長、副課長）、輸入該職稱的簽核碼，選擇核准或退回，可加註意見（最多 500 字）。
 清單卡片會顯示簽核主管、結果、簽核時間與意見。
 
 - 簽核透過資料庫函式 `sign_leave_request` 進行，函式檢查簽核碼後，只能把「待審核」改為「已核准」或「已退回」，每筆一次，簽核時間自動產生；不能修改申請內容。
+- 每個職稱有各自的簽核碼；函式會確認簽核碼與所選職稱相符，簽核主管欄位記錄職稱。
 - 簽核碼只以 bcrypt 雜湊存放在不對 API 公開的 `private.supervisor_codes`，網頁與程式碼中都沒有簽核碼。
-- 管理者執行 `supabase/schema.sql` 後，在 SQL Editor 另外設定簽核碼（請自訂夠長的簽核碼，不要提交到版本控制）：
+- 管理者執行 `supabase/schema.sql` 後，在 SQL Editor 為每個職稱設定簽核碼（請自訂簽核碼，不要提交到版本控制）：
 
 ```sql
-insert into private.supervisor_codes (code_hash)
-values (extensions.crypt('自訂簽核碼', extensions.gen_salt('bf')));
+insert into private.supervisor_codes (role, code_hash) values
+    ('廠長',   extensions.crypt('自訂簽核碼1', extensions.gen_salt('bf'))),
+    ('副廠長', extensions.crypt('自訂簽核碼2', extensions.gen_salt('bf'))),
+    ('課長',   extensions.crypt('自訂簽核碼3', extensions.gen_salt('bf'))),
+    ('副課長', extensions.crypt('自訂簽核碼4', extensions.gen_salt('bf')));
 ```
+
+- 若之前已執行過舊版 `schema.sql`（簽核碼未分職稱），請先執行 `supabase/migrations/20261117_add_supervisor_roles.sql`，再依上方 SQL 設定各職稱簽核碼；舊的簽核碼執行後即失效。
+- 更換某職稱的簽核碼：先 `delete from private.supervisor_codes where role = '課長';`，再新增一筆。
 
 **限制：** 此示範沒有登入與嘗試次數限制，簽核碼外流或過短即可能被冒用；正式使用前應改為 Supabase Auth 主管帳號。
 
