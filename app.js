@@ -347,7 +347,6 @@
     }
   });
 
-  signoffForm.elements.approver_name.addEventListener('input', (event) => event.target.setCustomValidity(''));
 
   // 主管簽核：呼叫資料庫函式，由資料庫檢查簽核碼並只允許簽核「待審核」的申請。
   signoffForm.addEventListener('submit', async (event) => {
@@ -359,14 +358,13 @@
       return;
     }
     const approver = signoffForm.elements.approver_name;
-    approver.setCustomValidity(approver.value.trim() ? '' : '請填寫內容，不能只有空白。');
     if (!signoffForm.reportValidity()) return;
 
     const label = pendingLabels.get(signoffSelect.value) || '';
     const params = {
       p_request_id: signoffSelect.value,
       p_decision: signoffForm.elements.decision.value,
-      p_approver_name: approver.value.trim(),
+      p_approver_name: approver.value,
       p_comment: signoffForm.elements.approver_comment.value.trim(),
       p_code: signoffForm.elements.signoff_code.value,
     };
@@ -382,7 +380,9 @@
     } catch (error) {
       const text = String(error?.message || '');
       const reason = text.includes('invalid supervisor code')
-        ? '簽核碼不正確，請向管理者確認。'
+        ? '簽核碼與所選職稱不符，請確認職稱與簽核碼。'
+        : text.includes('invalid approver role')
+          ? '請選擇簽核主管職稱。若持續出現，請管理者執行 supabase/migrations/20261117_add_supervisor_roles.sql。'
         : text.includes('already signed')
           ? '這筆申請已被簽核或不存在，請重新整理清單。'
           : '簽核未完成確認。請先重新整理清單，確認狀態後再決定是否重試。';

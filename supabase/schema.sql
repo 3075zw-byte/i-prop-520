@@ -9,7 +9,8 @@
 -- 每月統計表的即時更新：執行本檔後，再執行 supabase/migrations/20261116_enable_leave_realtime.sql。
 -- 若已執行過舊版本檔建立 leave_requests，請改執行 supabase/migrations/20261116_add_leave_types.sql。
 -- 示範資料僅使用虛構姓名；anon 可讀取完整清單。
--- 主管簽核：透過 sign_leave_request 函式，須輸入正確的簽核碼；
+-- 主管簽核：透過 sign_leave_request 函式，選擇職稱（廠長、副廠長、課長、副課長）並輸入該職稱的簽核碼；
+-- 若已執行過舊版本檔，請改執行 supabase/migrations/20261117_add_supervisor_roles.sql。
 -- 簽核碼只以雜湊值存在 private 結構描述，前端與 API 均無法讀取。
 -- 每筆申請只能簽核一次，簽核時間由資料庫自動產生。
 
@@ -111,7 +112,12 @@ create table private.supervisor_codes (
     id bigint generated always as identity primary key,
     -- 以 bcrypt 產生的雜湊值，不保存簽核碼原文。
     code_hash text not null,
-    created_at timestamptz not null default now()
+    -- 簽核主管職稱；每個職稱使用各自的簽核碼。
+    role text not null,
+    created_at timestamptz not null default now(),
+    constraint supervisor_codes_role_check check (
+        role in ('廠長', '副廠長', '課長', '副課長')
+    )
 );
 revoke all privileges on table private.supervisor_codes from public, anon, authenticated;
 
@@ -132,16 +138,20 @@ begin
     if p_decision not in ('已核准', '已退回') then
         raise exception 'invalid decision' using errcode = '22023';
     end if;
+    if p_approver_name is null or p_approver_name not in ('廠長', '副廠長', '課長', '副課長') then
+        raise exception 'invalid approver role' using errcode = '22023';
+    end if;
     if p_code is null or not exists (
         select 1 from private.supervisor_codes c
-        where c.code_hash = extensions.crypt(p_code, c.code_hash)
+        where c.role = p_approver_name
+          and c.code_hash = extensions.crypt(p_code, c.code_hash)
     ) then
         raise exception 'invalid supervisor code' using errcode = '28000';
     end if;
 
     update public.leave_requests
        set status = p_decision,
-           approver_name = btrim(p_approver_name),
+           approver_name = p_approver_name,
            approver_comment = nullif(btrim(coalesce(p_comment, '')), ''),
            signed_at = now()
      where id = p_request_id
@@ -157,8 +167,9 @@ revoke all on function public.sign_leave_request(uuid, text, text, text, text) f
 grant execute on function public.sign_leave_request(uuid, text, text, text, text) to anon;
 
 -- 執行本檔後，由資料庫擁有者另外設定簽核碼（請自訂夠長的簽核碼，勿提交到版本控制）：
---   insert into private.supervisor_codes (code_hash)
---   values (extensions.crypt('自訂簽核碼', extensions.gen_salt('bf')));
+--   insert into private.supervisor_codes (role, code_hash)
+--   values ('廠長', extensions.crypt('自訂簽核碼', extensions.gen_salt('bf')));
+-- 廠長、副廠長、課長、副課長各設定一筆。
 -- 停用舊簽核碼：delete from private.supervisor_codes where id = <編號>;
 -- 限制：此示範沒有登入與嘗試次數限制，簽核碼外流或過短即可能被冒用；
 -- 正式使用前應改為 Supabase Auth 主管帳號。假別與通知尚未決定，暫不實作。
