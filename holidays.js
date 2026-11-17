@@ -7,8 +7,8 @@
 window.LEAVE_CALENDAR = Object.freeze({
   // 每日上班時段（24 小時制）；午休時間不在時段內，不計入請假時數。
   workPeriods: Object.freeze([
-    Object.freeze({ start: '09:00', end: '12:00' }),
-    Object.freeze({ start: '13:00', end: '18:00' }),
+    Object.freeze({ start: '08:00', end: '12:00' }),
+    Object.freeze({ start: '13:00', end: '17:00' }),
   ]),
   // 一天的上班時數，用來把請假時數換算成天數。
   hoursPerDay: 8,

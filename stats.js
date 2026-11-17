@@ -10,7 +10,7 @@
   const STATUSES = ['待審核', '已核准', '已退回'];
   // 上班時段、國定假日與補班日來自 holidays.js 的 LEAVE_CALENDAR；未載入時使用下列預設。
   // 請假時數只計算工作日上班時段內的部分：不計週六、週日、國定假日與午休，補班日照常計算。
-  const DEFAULT_PERIODS = [['09:00', '12:00'], ['13:00', '18:00']];
+  const DEFAULT_PERIODS = [['08:00', '12:00'], ['13:00', '17:00']];
   const toMin = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
   const MINUTE = 60 * 1000;
   const DAY = 24 * 60 * MINUTE;

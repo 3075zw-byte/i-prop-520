@@ -45,9 +45,9 @@
             <label class="full-width">申請日期<input aria-label="申請日期" id="application_date" name="application_date" type="date" readonly tabindex="-1" class="readonly-input"><span class="hint field-hint">系統自動帶入今天；實際申請時間以送出時為準。</span></label>
             <label class="full-width">員工姓名<input aria-label="員工姓名" id="employee_name" name="employee_name" required maxlength="100" placeholder="例如：虛構員工甲" autocomplete="off"></label>
             <label>開始日期<input aria-label="請假開始日期" id="start_date" name="start_date" type="date" required></label>
-            <label>開始時間<input aria-label="請假開始時間" id="start_time" name="start_time" type="time" required value="09:00"></label>
+            <label>開始時間<input aria-label="請假開始時間" id="start_time" name="start_time" type="time" required value="08:00"></label>
             <label>結束日期<input aria-label="請假結束日期" id="end_date" name="end_date" type="date" required></label>
-            <label>結束時間<input aria-label="請假結束時間" id="end_time" name="end_time" type="time" required value="18:00"></label>
+            <label>結束時間<input aria-label="請假結束時間" id="end_time" name="end_time" type="time" required value="17:00"></label>
             <fieldset class="choice-group full-width" id="leave-types"><legend>請假原因（可複選）</legend>
               <label class="choice"><input type="checkbox" name="leave_types" value="事假">事假</label>
               <label class="choice"><input type="checkbox" name="leave_types" value="病假">病假</label>
@@ -104,7 +104,7 @@
           <tfoot id="stats-foot"></tfoot>
         </table>
       </div>
-      <p class="hint stats-note">請假時數只計算工作日 09:00–12:00、13:00–18:00 的部分，不計週六、週日、國定假日與午休（與表單的請假天數相同）；跨日、跨月申請依日期分別計入。假別複選時，各假別都計 1 筆。<span id="stats-updated"></span></p>
+      <p class="hint stats-note">請假時數只計算工作日 08:00–12:00、13:00–17:00 的部分，不計週六、週日、國定假日與午休（與表單的請假天數相同）；跨日、跨月申請依日期分別計入。假別複選時，各假別都計 1 筆。<span id="stats-updated"></span></p>
     </section>
   </main>
   <footer class="container"><span class="footer-pill">員工請假申請示範系統・清單內容公開可見</span></footer>
